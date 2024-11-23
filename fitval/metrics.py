@@ -876,8 +876,7 @@ def metric_at_sens(y_true: np.ndarray, y_pred: np.ndarray, sens: list = [0.8, 0.
     thr_sens = thr_sens.reset_index(drop=True)
 
     if format_long:
-        value_cols = ['thr', 'spec', 'ppv', 'npv', 'tp', 'fp', 'tn', 'fn', 'interp', 'max_sens', 'pp', 'pn', 'pp_per_cancer']
-        thr_sens = pd.melt(thr_sens, id_vars=['sens'], value_vars=value_cols, var_name='metric_name', value_name='metric_value')
+        thr_sens = pd.melt(thr_sens, id_vars=['sens'], value_vars=None, var_name='metric_name', value_name='metric_value')
 
     return thr_sens
 
@@ -1065,6 +1064,7 @@ def metric_at_single_sens(y_true: np.ndarray, y_pred: np.ndarray, target_sens: f
             mmod = interpolate_pr(df=m_interp, recall=[sens_new], interp_thr_nonlin=False)
             mmod = mmod.rename(columns={'recall': 'sens', 'precision': 'ppv'})
             mmod = mmod[['thr', 'sens', 'spec', 'ppv', 'npv', 'tp', 'fp', 'tn', 'fn']]
+            mmod['interp'] = 1
             mmod = mmod.squeeze()
     
     mmod = add_derived_metrics(mmod)
