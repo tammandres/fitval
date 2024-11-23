@@ -740,8 +740,8 @@ def interpolate_pr(df: pd.DataFrame, step: float = 0.05, sens_add: list = None, 
 
     # Interpolate threshold too -- as an indication where its value may lie
     if not interp_thr_nonlin:
-        #df['thr'] = df[['thr']].interpolate('linear')
-        msg = 'Thr is not interpolated atm.'
+        df['thr'] = df[['thr']].interpolate('linear')
+        #msg = 'Thr is not interpolated atm.'
 
     # Retain only interpolated data
     df = df.loc[df.interp == True]
