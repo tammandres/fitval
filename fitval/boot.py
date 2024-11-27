@@ -764,9 +764,9 @@ def boot_noci(data: PerformanceData, save_path: Path = None, nboot: int = 20, se
 
     @dataclass
     class DataNoCI:
-        roc: pd.DataFrame() = pd.DataFrame()
-        pr: pd.DataFrame() = pd.DataFrame()
-        cal_bin: pd.DataFrame() = pd.DataFrame()
+        roc: pd.DataFrame = pd.DataFrame()
+        pr: pd.DataFrame = pd.DataFrame()
+        cal_bin: pd.DataFrame = pd.DataFrame()
 
     rng = np.random.default_rng(seed=seed)
     data_noci = DataNoCI()

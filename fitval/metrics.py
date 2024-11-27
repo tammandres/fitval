@@ -15,41 +15,41 @@ class PerformanceData:
     """Data class for storing performance metrics"""
 
     # Global discrimination and calibration metrics
-    disc: pd.DataFrame() = pd.DataFrame()  #  Global discrmination metrics
-    cal: pd.DataFrame() = pd.DataFrame()  #  Global calibration metrics
+    disc: pd.DataFrame = pd.DataFrame()  #  Global discrmination metrics
+    cal: pd.DataFrame = pd.DataFrame()  #  Global calibration metrics
 
     # Diagnostic metrics computed at predefined model risk score thresholds
     # It is assumed that the model yields a prediction between 0 and 1 that can be interpreted as probability of cancer
-    thr_risk: pd.DataFrame() = pd.DataFrame()
+    thr_risk: pd.DataFrame = pd.DataFrame()
     
     # Diagnostic metrics computed at a small number of prespecified sensitivity levels
     # For example, PPV and NPV at 80% and 90% sensitivities
-    thr_sens: pd.DataFrame() = pd.DataFrame()
+    thr_sens: pd.DataFrame = pd.DataFrame()
     
     # Diagnostic metrics computed at sensitivities corresponding to prespecified FIT thresholds
     # For example, PPV and NPV corresponding to sensitivities of FIT >= 2 and FIT >= 10
     # Importantly, this also computes the percent reduction in total number of positive tests
     # when model and FIT are evaluated at the same level of sensitivity
-    thr_sens_fit: pd.DataFrame() = pd.DataFrame()  
+    thr_sens_fit: pd.DataFrame = pd.DataFrame()  
     
     # Diagnostic metrics computed at FIT thresholds and model thresholds
-    thr_fit_mod: pd.DataFrame() = pd.DataFrame()  
+    thr_fit_mod: pd.DataFrame = pd.DataFrame()  
 
     # Receiver-operating characteristic (ROC) curves
-    roc: pd.DataFrame() = pd.DataFrame()  # Empirical ROC curve data
-    roc_int: pd.DataFrame() = pd.DataFrame()  # Interpolated ROC curve (interpolated sensitivity on fixed grid of fpr)
+    roc: pd.DataFrame = pd.DataFrame()  # Empirical ROC curve data
+    roc_int: pd.DataFrame = pd.DataFrame()  # Interpolated ROC curve (interpolated sensitivity on fixed grid of fpr)
 
     # Precision-recall (PR) curves
-    pr: pd.DataFrame() = pd.DataFrame()  # Empirical PR curve data
-    pr_int: pd.DataFrame() = pd.DataFrame()  # Interpolated PR curve data (PPV, NPV, specificity, TP, FP, TN, FN interpolated at fixed grid of sensitivity)
-    pr_gain: pd.DataFrame() = pd.DataFrame()  # Gain in precision compared to FIT, and reduction in number of tests comparaed to FIT, computed from interpolated PR curve data data
+    pr: pd.DataFrame = pd.DataFrame()  # Empirical PR curve data
+    pr_int: pd.DataFrame = pd.DataFrame()  # Interpolated PR curve data (PPV, NPV, specificity, TP, FP, TN, FN interpolated at fixed grid of sensitivity)
+    pr_gain: pd.DataFrame = pd.DataFrame()  # Gain in precision compared to FIT, and reduction in number of tests comparaed to FIT, computed from interpolated PR curve data data
 
     # Calibration curves
-    cal_bin: pd.DataFrame() = pd.DataFrame()  # Data for binned calibration curves
-    cal_smooth: pd.DataFrame() = pd.DataFrame()  # Data for smooth calibration curves
+    cal_bin: pd.DataFrame = pd.DataFrame()  # Data for binned calibration curves
+    cal_smooth: pd.DataFrame = pd.DataFrame()  # Data for smooth calibration curves
 
     # Decision curves
-    dc: pd.DataFrame() = pd.DataFrame()  # Data for decision curves, including net benefit
+    dc: pd.DataFrame = pd.DataFrame()  # Data for decision curves, including net benefit
  
 
 def all_metrics(y_true: np.ndarray, y_pred: np.ndarray, fit: np.ndarray = None, 
