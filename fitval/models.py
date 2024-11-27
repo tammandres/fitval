@@ -5,7 +5,6 @@ from pathlib import Path
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import FunctionTransformer, SplineTransformer 
-from constants import PROJECT_ROOT
 
 
 def _sigmoid(x):
@@ -13,7 +12,7 @@ def _sigmoid(x):
 
 
 # ---- Add your models here and update the get_model function accordingly
-MODEL_NAMES = ['logistic-full', 'logistic-fast']  # list all valid model names that can be returned by the get_model function
+MODEL_NAMES = ['logistic-full', 'logistic-fit-age']  # list all valid model names that can be returned by the get_model function
 
 def logistic_full(X: pd.DataFrame):
     """Dummy model that computes a risk score using columns in DataFrame X"""
@@ -22,9 +21,9 @@ def logistic_full(X: pd.DataFrame):
     return prob
 
 
-def logistic_fit_age_sex(X: pd.DataFrame):
+def logistic_fit_age(X: pd.DataFrame):
     """Dummy model that computes a risk score using columns in DataFrame X"""
-    linear_predictor = -8.9 + 0.003 * X.fit_val + 0.066 * X.age + 1.1 * X.ind_gender_M
+    linear_predictor = -8.9 + 0.003 * X.fit_val + 0.066 * X.age
     prob = _sigmoid(linear_predictor)
     return prob
 
@@ -36,8 +35,8 @@ def get_model(model_name: str):
 
     if model_name == 'logistic-full':
         return logistic_full
-    elif model_name == 'logistic-fast':
-        return logistic_fit_age_sex
+    elif model_name == 'logistic-fit-age':
+        return logistic_fit_age
 
 
 # ---- Code for FIT-only spline model that will be fitted to the data to estimate risk corresponding to FIT = 10
