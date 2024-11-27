@@ -1,12 +1,8 @@
-import pandas as pd
 import numpy as np
-import os
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import roc_auc_score
-from sklearn.preprocessing import RobustScaler
 from fitval.dummydata import dummy_fit_data, induce_missing
 from fitval.boot import boot_metrics
-from fitval.plots import plot_rocpr_interp
 from constants import PROJECT_ROOT
 
 
@@ -67,10 +63,14 @@ def test_boot_metrics_when_data_has_predictions():
 
 def test_boot_metrics():
     data_ci, data_noci = boot_metrics(data_path=path_xy, save_path=test_path, model_names=['logistic-full', 'logistic-fast'],
-                                      data_has_predictions=False, B=5)
+                                      data_has_predictions=False, B=5, plot_boot=False)
 
 
 def test_boot_metrics_mis():
     data_ci, data_noci = boot_metrics(data_path=path_xy_mis, save_path=test_path, model_names=['logistic-full', 'logistic-fast'],
-                                      data_has_predictions=False, B=5, M=3)
+                                      data_has_predictions=False, B=5, M=3, plot_boot=False)
 
+
+def test_boot_metrics_parallel():
+    data_ci, data_noci = boot_metrics(data_path=path_pred, save_path=test_path, data_has_predictions=True,
+                                      model_names=None, B=10, parallel=True, nchunks=4)

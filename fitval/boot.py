@@ -12,21 +12,15 @@ Process with imputation
 
 Process without imputation
 1. Take a bootstrap sample of the original data
-2. Apply prediction model(s) to the sample
+2. Apply prediction model(s) to the sample (or use existing model predictions)
 3. Compute performance metrics
 4. Repeat steps 1-5 B times to obtain a bootstrap distribution for each performance metric
 5. Use bootstrap percentile method to get confidence intervals for the performance metric
-
-This code could be split into two (as in old script), 
-where prediction models are applied and predictions are saved to disk.
-The main reason for doing this is to allow external imputation methods to be used (e.g. R mice)
 
 Note:
 * In some bootstrap samples, metrics for FIT test can be nan at low sensitivities (e.g. 0.5).
   For example, it may be that at the highest FIT threshold, sensitivity is 53%, 
   so there are no lower sensitivities.
-* in thr_sens_fit metric, 'max_sens' is not computed for FIT test, as FIT is applied only at selected thr
-  hence max_sens is nan in output.
 """
 import numpy as np
 import pandas as pd
@@ -84,19 +78,20 @@ def boot_metrics(data_path: Path,
                  recal: bool = True,
                  thr_risk: list = [0.005, 0.01, 0.02, 0.03, 0.04, 0.05, 0.1, 0.2], 
                  sens: list = [0.5, 0.8, 0.85, 0.9, 0.95, 0.99], 
-                 thr_fit: list = [2, 10, 100],
+                 thr_fit: list = [2, 10],
                  prob_min: float = 0.2,
                  B: int = 500, 
                  boot_method: str = 'percentile',
                  M: int = 10,
                  max_iter: int = 10,
-                 impute_y: bool = False,
+                 impute_with_y: bool = False,
                  random_state: int = 42,
                  n_noci: int = 5, 
                  parallel: bool = False,
                  nchunks: int = 15, 
                  raw_rocpr: bool = False, 
-                 plot_boot: bool = False
+                 plot_boot: bool = True,
+                 return_boot_samples: bool = False
                  ):
     """Compute performance metrics for predefined models on dataset (x, y), 
     and obtain bootstrap confidence intervals for the metrics
@@ -108,39 +103,39 @@ def boot_metrics(data_path: Path,
             If True, the input data must have columns "y_true", "y_pred" and "fit_val",
                 where y_true contains 0-1 outcome labels (e.g. 0: no cancer, 1: cancer),
                 y_pred contains predicted probabilities of the outcome according to a model, and
-                fit_val contains numerical FIT test values
+                fit_val contains numerical FIT test values.
+                If there are multiple models, their predictions must be named as 'y_pred1', 'y_pred2', 'y_pred3' etc.
             If False, the input data must have columns "y_true" and "fit_val" as defined above,
                 and additional columns required to apply a prediction model.
-        model_name: name of your model to be included in output tables, only relevant if data_has_predictions is True.
-        models: list of names of models to be evaluated, only relevant if data_has_predictions is False.
-            In that case, 
-                    
+        model_names: names of models that were used to compute predictions, for example ['logistic-full', 'logistic-restricted'].
+                If data_has_predictions is True, there must be as many names as there are columns that start with name 'y_pred'.
+        recal: apply logistic recalibration to all models? In that case, recalibrated models are evaluated alongside the original ones.
         thr_risk: thresholds of predicted risk to compute metrics for
         sens: sensitivity values at which to compute metrics
         prob_min: x-axis limit for predicted probabilities in calibration curves that show predicted risks in lower range
         B: number of bootstrap samples
-        boot_method: method of computing bootstrap CIs
+        boot_method: method of computing bootstrap CIs, either 'percentile' or 'basic'
         M: number of multiple imputation rounds
         max_iter: maximum number of iterations at each of the multiple imputation rounds
-        impute_y: include outcome variable in imputation models?
+        impute_with_y: include outcome variable in imputation models?
         random_state: initial random state
         n_noci: number of bootstrap samples to save for metrics where bootstrap CIs cannot be computed (e.g. raw ROC and PR curves)
                 as the raw ROC curve data is large, saving all bootstrap samples is not good
         parallel: process bootstrap samples using parallel cores
-        save_path: path to save results to. If not specified, results are not saved to disk.
-        models_recal: names of models to recalibrate; see ftival/models.py for valid names
-        fit_spline: apply a logistic regression model (on FIT values transformed first by log1p then by spline)
-                    to predict the risk of cancer as a 'FIT only' model
         nchunks: number of chunks to divide the B bootstrap samples into for parallel processing
+        raw_rocpr: do not save raw ROC and PR curves (can take up disk space)
         plot_boot: plot bootstrap distributions of some metrics?
+        return_boot_samples: if True, a dataclass containing bootstrap samples is returned.
     
     Returns
-        ci_data: PerformanceData class (see fitval/metrics.py) that contains metrics along with bootstrap confidence intervals.
-                 Fields for which bootstrap CIs cannot be computed are empty and stored in noci_data instead
-        noci_data: dataclass that contains metrics for which bootstrap CIs cannot be computed.
-                   .roc: ROC curve data along with n_noci bootstrap samples
-                   .pr: PR curve data with n_noci bootstrap samples
-                   .cal_bin: binned calibration curve data with n_noci bootstrap samples   
+        if return_boot_samples is False:
+            ci_data: PerformanceData class (see fitval/metrics.py) that contains metrics along with bootstrap confidence intervals.
+                    Fields for which bootstrap CIs cannot be computed are empty and stored in noci_data instead
+            noci_data: dataclass that contains metrics for which bootstrap CIs cannot be computed.
+                    .roc: ROC curve data along with n_noci bootstrap samples
+                    .pr: PR curve data with n_noci bootstrap samples
+                    .cal_bin: binned calibration curve data with n_noci bootstrap samples 
+        otherwise it returns a PerformanceData class (see fitval/metrics.py) that contains metrics along with bootstrap samples.
     """
     tic = time.time()
     
@@ -149,7 +144,6 @@ def boot_metrics(data_path: Path,
     interp_step = 0.01  # Interpolation step for PR and ROC curves, 0.01 means 1% increment
     stratified_boot = False  # stratified bootstrap (bootstrap samples taken separately for y==0 and y==1 retaining the proportion of y==1)
     repl_ypred_nan = False  # if a model returns a nan for prediction, replace it with zero? False by default, only used for testing
-    return_boot_samples = False  # return bootstrap samples of metrics? In that case, no bootstrap CIs are computed
     fit_spline = True  # Should the fitted FIT-only spline model be subsequently evaluated?
     plot_fit_model = True
 
@@ -265,7 +259,7 @@ def boot_metrics(data_path: Path,
             # Impute original data M times if it has missing values
             # If there are no missing values, the function just returns original dataframe
             # and adds a single value for the imputed dataset indicator (m = 0)
-            x_imp, y_imp, idx_imp = impute_xy(x, y, M, max_iter, seeds_orig, impute_y)
+            x_imp, y_imp, idx_imp = impute_xy(x, y, M, max_iter, seeds_orig, impute_with_y)
 
             # Get true outcome labels and predicted probabilities for each imputed dataset
             # This applies the models specified in model_names, 
@@ -394,19 +388,16 @@ def boot_metrics(data_path: Path,
     
     # ==== 2. Get bootstrap CI for metrics ====
 
-    # Plot bootstrap distributions
-    if plot_boot:
-        try:
-            plot_boot_metrics(data, save_path)
-        except:
-            print("plot_boot_metrics did not complete")
-
     # Compute bootstrap confidence interval for metrics where it can be computed
     ci_data = boot_ci(data=data, save_path=save_path, method=boot_method)
 
     # Return metrics on original sample, and on n_noci bootstrap samples
     # for metrics where bootstrap CI cannot be directly computed
     noci_data = boot_noci(data=data, save_path=save_path, nboot=n_noci, seed=random_state)
+
+    # Plot bootstrap distributions
+    if plot_boot:
+        plot_boot_metrics(data, save_path)
 
     toc = time.time()
     print('Code ran in {:.2f} minutes.'.format((toc - tic) / 60))
@@ -461,7 +452,7 @@ def predict(x_imp: pd.DataFrame, y_imp: pd.DataFrame, idx_imp: np.ndarray, model
 
 
 # ~ Helpers: Impute data ~
-def impute_xy(x: pd.DataFrame, y: pd.DataFrame, M: int, max_iter: int, seeds: np.ndarray, impute_y: bool):
+def impute_xy(x: pd.DataFrame, y: pd.DataFrame, M: int, max_iter: int, seeds: np.ndarray, impute_with_y: bool):
     """Imputes a dataset M times if there are missing values.
     Args
         x: DataFrame of predictor variables, shape n x p, where n is number of patients and p is number of variables
@@ -469,7 +460,7 @@ def impute_xy(x: pd.DataFrame, y: pd.DataFrame, M: int, max_iter: int, seeds: np
         M: number of imputations
         max_iter: maximum number of iterations for MICE
         seeds: random states used for each multiple imputation round, must be of the same length as M
-        impute_y: if True, the outcome variable y is used to impute missing values in predictor variables,
+        impute_with_y: if True, the outcome variable y is used to impute missing values in predictor variables,
                   (but the outcome variable itself is not imputed and is assumed to be complete).
     Returns:
         x_imp: DataFrame containing imputed predictor variables, 
@@ -486,7 +477,7 @@ def impute_xy(x: pd.DataFrame, y: pd.DataFrame, M: int, max_iter: int, seeds: np
         print('... Imputing missing values on original data')
 
         # Use outcome variable (y) in imputation if requested
-        if impute_y:
+        if impute_with_y:
             df = pd.concat(objs=[x, y], axis=1) 
             df_imp = _impute(df, M=M, max_iter=max_iter, seeds=seeds)
             x_imp = df_imp.loc[:, x.columns.tolist() + ['m']]
@@ -936,43 +927,47 @@ def recalibrate_predictions(df: pd.DataFrame, cal: dict):
 
 
 # ~ Helpers: plot Bootstrap distributions ~
-def _plot_boot(df, save_path, out_name, sample=True):
+def _plot_boot(df, save_path, out_name):
 
+    # Columns that contain model name, metric name and metric value
     model_name_col = 'model_name'
     metric_name_col = 'metric_name'
     metric_value_col = 'metric_value'
     
     # Index columns
-    #  For example, the thr_sens_fit_gain dataframe will contain performance metrics
-    #  corresponding to FIT thresholds 2, 10 and 100, so "thr_fit" is the index column in that case
-    #  Bootstrap distributions need to be plotted separately for each model and index column value
+    #  In addition to model name, performance metric tables may contain other columns 
+    #  that act as grouping variables, such as level of sensitivity or FIT threshold
+    #  we want to plot bootstrap distributions seperately for these groups.
     non_index_cols = ['metric_name', 'metric_value', 'model_name', 'b', 'm', 'model']
     index_cols = [c for c in df.columns if c not in non_index_cols]
-    if len(index_cols) > 1:
-        raise ValueError("More than one index column")
     if index_cols:
-        index_col = index_cols[0]
-        groups = df[[index_col, model_name_col]].drop_duplicates().reset_index(drop=True)
-        if index_col in ['recall', 'sens']:
-            groups = groups.loc[groups[index_col] >= 0.8]
-        if not index_col == 'thr_fit' and sample:
-            groups = groups.groupby(model_name_col).sample(1, random_state=42).reset_index(drop=True)
-        #if groups.groupby(model_name_col).size().min() > 3:
-        #    groups = groups.groupby(model_name_col).sample(1, random_state=42).reset_index(drop=True)
+        groups = df[index_cols + [model_name_col]].drop_duplicates().reset_index(drop=True)
+        if len(groups) > 10:
+            #groups = groups.groupby(model_name_col).sample(1, random_state=42).reset_index(drop=True)
+            groups = groups.sample(10, random_state=42).reset_index(drop=True)
     else:
-        index_col = None
+        index_cols = None
         groups = df[[model_name_col]].drop_duplicates().reset_index(drop=True)
     
     # Models to include
     models = df[model_name_col].unique()
-    models_excl = ['all', 'none', 'fit10']
+    models_excl = ['all', 'none', 'fit10']  # Exclude 'all', 'none', 'fit10' from DC curves
     models = [m for m in models if m not in models_excl]
     groups = groups.loc[groups.model_name.isin(models)]
 
     # Metrics to include
     metrics = df[metric_name_col].unique()
-    metrics_excl = ['interp', 'harm']
-    metrics = [m for m in metrics if m not in metrics_excl]
+    metrics_incl = ['auroc', 'ap', 
+                    'oe_ratio', 'log_intercept', 'log_slope',
+                    'sens', 'spec', 'ppv', 'npv', 'pp',
+                    'sens_fit', 'spec_fit', 'ppv_fit', 'npv_fit', 'pp_fit', 'thr_fit',
+                    'sens_mod', 'spec_mod', 'ppv_mod', 'npv_mod', 'pp_mod', 'thr_mod',
+                    'proportion_reduction_tests', 'delta_sens', 'delta_ppv',
+                    'tpr', 'precision', 'precision_fit',
+                    'prob_true',
+                    'net_benefit', 'net_intervention_avoided'
+                    ]
+    metrics = [m for m in metrics if m in metrics_incl]
 
     # Figure layout
     nrow = groups.shape[0]
@@ -987,35 +982,30 @@ def _plot_boot(df, save_path, out_name, sample=True):
         
         # Model name
         model_name = row.model_name
-        if index_col:
-            index_value = row[index_col]
-        else:
-            index_value = None
 
         # Title for current row
         subfig = subfigs[i]
-        if index_col:
-            title = index_col + ': ' + str(index_value) + ', model: ' + model_name
+        if index_cols:
+            title = ""
+            for c in index_cols:
+                title += c + ':' + str(np.round(row[c], 3)) + ', '
+            title += 'model: ' + model_name
         else:
             title = 'Model: ' + model_name
         subfig.suptitle(title, x=0.0, ha='left', fontsize=10) #, fontweight='bold')
 
         # Plot metrics into each column of this row
+        dfrow = pd.DataFrame(row).transpose().merge(df, how='inner')
+
         ax = subfig.subplots(nrows=1, ncols=len(metrics))     
         for j, metric_name in enumerate(metrics):
             
             # Bootstrap distribution
-            mask = (df.model_name == model_name) & (df.metric_name == metric_name) & (df['b'] != -1)
-            if index_cols:
-                mask = mask & (df[index_col] == index_value)
-            dfsub = df.loc[mask, metric_value_col]
-            sns.kdeplot(dfsub, ax=ax[j], label=model_name, color=model_colors[model_name])
+            dfsub = dfrow.loc[(dfrow.metric_name == metric_name) & (dfrow.b != -1), metric_value_col]
+            sns.kdeplot(dfsub, ax=ax[j], label=model_name)
 
             # Estimate based on original data
-            mask_orig = (df.model_name == model_name) & (df.metric_name == metric_name) & (df['b'] == -1)
-            if index_cols:
-                mask_orig = mask_orig & (df[index_col] == index_value)
-            dforig = df.loc[mask_orig, metric_value_col]
+            dforig = dfrow.loc[(dfrow.metric_name == metric_name) & (dfrow.b == -1), metric_value_col]
             if dforig.shape[0] > 0:
                 value_orig = dforig.iloc[0]
                 ax[j].axvline(x=value_orig, color='gray') 
@@ -1024,7 +1014,7 @@ def _plot_boot(df, save_path, out_name, sample=True):
             ax[j].set_title(metric_name, fontsize=8)
             ax[j].set_xlabel(xlabel='metric_value', fontsize=8)
             ax[j].set_ylabel(ylabel='density', fontsize=8)
-            if dfsub.std() < 1e-5:
+            if dfsub.std() < 1e-5:   # If there is almost no variation in the metric over samples do not plot.
                 ax[j].set_visible(False)
                 
     plt.subplots_adjust(top=0.75, hspace=0.75, wspace=0.5)
@@ -1038,9 +1028,7 @@ def plot_boot_metrics(data_ci, save_path):
     # Exclude some tables - mainly to save time and reduce computation
     # Some tables, like cal_bin and cal_smooth may also have more than 1 index col
     # and are not incorporated atm.
-    fields_excl = ['cal_bin', 'cal_smooth', 'pr_int', 'roc_int', 'dc', 
-                   'thr_risk', 'thr_sens']
-
+    fields_excl = ['cal_bin', 'pr', 'roc']
     fields = [f for f, __ in data_ci.__dataclass_fields__.items()]
     fields = [f for f in fields if f not in fields_excl]
     for f in fields:
@@ -1049,5 +1037,7 @@ def plot_boot_metrics(data_ci, save_path):
         d = d.copy()
         if d.shape[0] > 0:
             out_name = 'plot_boot_data-' + f + '.png'
-            _plot_boot(d, save_path, out_name)
-
+            try:
+                _plot_boot(d, save_path, out_name)
+            except Exception as ex:
+                print("_plot_boot did not complete for table ", f, ", exception: ", ex)
