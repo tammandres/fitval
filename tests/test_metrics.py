@@ -73,9 +73,8 @@ def test_pr_data():
 
 
 def test_pr_gain():
-    u, v = pr_gain(y_true, y_prob, fit_val)
-    print(u)
-    print(v)
+    g = pr_gain(y_true, y_prob, fit_val)
+    print(g)
 
 
 def test_metric_at_risk():
