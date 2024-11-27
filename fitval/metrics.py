@@ -772,7 +772,7 @@ def pr_gain(y_true: np.ndarray, y_pred: np.ndarray, fit: np.ndarray, step: float
     print('... Computing delta PPV and proportion reduction in tests')
 
     # Interpolated PR-curve data for the model
-    if pr_mod is not None:
+    if pr_mod is None:
         __, pr_mod = pr_data(y_true, y_pred, step, add_wilson_ci=add_wilson_ci, sens_add=sens_add, format_long=False)
     pr_mod = pr_mod[['recall', 'precision']].drop_duplicates()
 

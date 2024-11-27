@@ -58,7 +58,7 @@ df_test_mis.to_csv(path_xy_mis, index=False)
 # Run with some of the different settings
 def test_boot_metrics_when_data_has_predictions():
     data_ci, data_noci = boot_metrics(data_path=path_pred, save_path=test_path, data_has_predictions=True,
-                                      model_names=None, B=5)
+                                      model_names=None, B=5, plot_boot=False)
     
 
 def test_boot_metrics():
@@ -73,4 +73,9 @@ def test_boot_metrics_mis():
 
 def test_boot_metrics_parallel():
     data_ci, data_noci = boot_metrics(data_path=path_pred, save_path=test_path, data_has_predictions=True,
-                                      model_names=None, B=10, parallel=True, nchunks=4)
+                                      model_names=None, B=10, parallel=True, nchunks=4, plot_boot=False)
+
+
+def test_boot_metrics_when_data_has_predictions_with_plot_boot():
+    data_ci, data_noci = boot_metrics(data_path=path_pred, save_path=test_path, data_has_predictions=True,
+                                      model_names=None, B=5, plot_boot=True)
