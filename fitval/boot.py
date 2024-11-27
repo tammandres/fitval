@@ -91,7 +91,8 @@ def boot_metrics(data_path: Path,
                  nchunks: int = 15, 
                  raw_rocpr: bool = False, 
                  plot_boot: bool = True,
-                 return_boot_samples: bool = False
+                 return_boot_samples: bool = False,
+                 plot_fit_model: bool = True
                  ):
     """Compute performance metrics for predefined models on dataset (x, y), 
     and obtain bootstrap confidence intervals for the metrics
@@ -145,7 +146,6 @@ def boot_metrics(data_path: Path,
     stratified_boot = False  # stratified bootstrap (bootstrap samples taken separately for y==0 and y==1 retaining the proportion of y==1)
     repl_ypred_nan = False  # if a model returns a nan for prediction, replace it with zero? False by default, only used for testing
     fit_spline = True  # Should the fitted FIT-only spline model be subsequently evaluated?
-    plot_fit_model = True
 
     # Argument validation
     if not isinstance(data_path, Path):
