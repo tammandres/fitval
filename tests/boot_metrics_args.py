@@ -1,0 +1,19 @@
+# For helping to test boot_metrics
+model_names: list = None
+recal: bool = True
+thr_risk: list = [0.005, 0.01, 0.02, 0.03, 0.04, 0.05, 0.1, 0.2]
+sens: list = [0.5, 0.8, 0.85, 0.9, 0.95, 0.99]
+thr_fit: list = [2, 10]
+prob_min: float = 0.2
+B: int = 500
+boot_method: str = 'percentile'
+M: int = 10
+max_iter: int = 10
+impute_with_y: bool = False
+random_state: int = 42
+n_noci: int = 5
+parallel: bool = False
+nchunks: int = 15
+raw_rocpr: bool = False
+plot_boot: bool = True
+return_boot_samples: bool = False
