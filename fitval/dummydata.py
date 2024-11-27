@@ -42,11 +42,10 @@ def induce_missing(x: np.ndarray, seed=42):
     return x
 
 
-def dummy_fit_data(n=500, bias=-4.5, random_state=42):
+def dummy_fit_data(n=250, bias=-4.5, random_state=42):
     
     # Dummy predictor variables
     rng = np.random.default_rng(seed=random_state)
-    n = 1000
     fit_val = rng.lognormal(mean=1.2, sigma=1.75, size=n)
     ind_gender = rng.binomial(n=1, p=0.4, size=n)
     blood_mcv = rng.gamma(shape=10, scale=3, size=n)
