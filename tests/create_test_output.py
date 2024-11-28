@@ -1,20 +1,21 @@
 from fitval.boot import boot_metrics
 from constants import PROJECT_ROOT
-from fitval.plots import plot_cal_smooth, plot_rocpr_interp, plot_dca
+from fitval.plots import plot_cal_smooth, plot_rocpr_interp, plot_dca, plot_cal_bin
 
 # Output path
 test_path = PROJECT_ROOT / 'tests' / 'test_boot'
 test_path.mkdir(exist_ok=True, parents=True)
 
-# Paths to data created by create_dummy_data.py
-path_pred = test_path / 'pred.csv'
-data_ci, data_noci = boot_metrics(data_path=path_pred, save_path=test_path, data_has_predictions=True, 
+# Paths to data created by create_dummy_data.py (ran 13.50 minutes)
+data_path = PROJECT_ROOT / 'tests' / 'test_data' / 'pred.csv'
+data_ci, data_noci = boot_metrics(data_path=data_path, save_path=test_path, data_has_predictions=True, 
                                   model_names=['logistic-full', 'logistic-fast'], B=1000, 
-                                  parallel=True, nchunks=10, plot_boot=False, plot_fit_model=False)
+                                  parallel=True, nchunks=5, plot_boot=True, plot_fit_model=False)
 
 # Plot
-plot_cal_smooth(test_path)
+plot_cal_bin(test_path, models_incl=['logistic-full', 'logistic-fast', 'fit-spline'])
+plot_cal_smooth(test_path, models_incl=['logistic-full', 'logistic-fast', 'fit-spline'])
 for ci in [True, False]:
-    plot_rocpr_interp(test_path, ci=ci)
-    plot_dca(test_path, ci=ci)
+    plot_rocpr_interp(test_path, ci=ci, models_incl=['logistic-full', 'logistic-fast', 'fit'])
+    plot_dca(test_path, ci=ci, models_incl=['logistic-full-platt', 'logistic-fast-platt', 'fit-spline'])
     

@@ -10,8 +10,8 @@ test_path.mkdir(exist_ok=True, parents=True)
 
 
 # Create dummy data
-df_test = dummy_fit_data(n=1000, random_state=42)
-df_train = dummy_fit_data(n=1000, random_state=108)
+df_test = dummy_fit_data(n=5000, random_state=42)
+df_train = dummy_fit_data(n=5000, random_state=256)
 
 # Fit dummy models
 x_train, y_train = df_train.drop(labels=['y_true'], axis=1), df_train.y_true
@@ -31,9 +31,9 @@ roc_auc_score(y_train, pred_train)
 roc_auc_score(y_test, pred_test)
 
 clf2 = LogisticRegression()
-clf2.fit(x_train_tf[['fit_val', 'age']], y_train)
-pred_train2 = clf2.predict_proba(x_train_tf[['fit_val', 'age']])[:, 1]
-pred_test2 = clf2.predict_proba(x_test_tf[['fit_val', 'age']])[:, 1]
+clf2.fit(x_train_tf[['fit_val', 'age', 'ind_gender_M']], y_train)
+pred_train2 = clf2.predict_proba(x_train_tf[['fit_val', 'age', 'ind_gender_M']])[:, 1]
+pred_test2 = clf2.predict_proba(x_test_tf[['fit_val', 'age', 'ind_gender_M']])[:, 1]
 roc_auc_score(y_train, pred_train2)
 roc_auc_score(y_test, pred_test2)
 

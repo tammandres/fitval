@@ -36,8 +36,12 @@ from sklearn.linear_model import BayesianRidge, LogisticRegression
 import matplotlib.pyplot as plt
 import seaborn as sns
 import warnings
-warnings.simplefilter(action='ignore', category=FutureWarning)  # Suppress pandas future warnings (for dcurves package)
-#warnings.simplefilter(action='ignore', category=UserWarning)  # Suppress UserWarning
+from tqdm import tqdm
+import contextlib
+import joblib
+
+#warnings.simplefilter(action='ignore', category=FutureWarning)  # Suppress pandas future warnings (for dcurves package)
+warnings.simplefilter(action='ignore')  # Suppress all warnings for smoother output (not ideal)
 
 
 # Output files for metrics (CI: bootstrap CI is computed; NOCI: no bootstrap CI is computed)
@@ -99,7 +103,7 @@ def boot_metrics(data_path: Path,
 
     Args
         data_path: Path to a .csv file that contains the input data
-        save_path: Path to a directory where outputs should be saved
+        save_path: Path to a directory where outputs will be saved
         data_has_predictions: 
             If True, the input data must have columns "y_true", "y_pred" and "fit_val",
                 where y_true contains 0-1 outcome labels (e.g. 0: no cancer, 1: cancer),
@@ -110,6 +114,9 @@ def boot_metrics(data_path: Path,
                 and additional columns required to apply a prediction model.
         model_names: names of models that were used to compute predictions, for example ['logistic-full', 'logistic-restricted'].
                 If data_has_predictions is True, there must be as many names as there are columns that start with name 'y_pred'.
+                If data_has_predictions is False, the get_model function in fitval/models.py must return 
+                the corresponding prediction model equation in response to its name.
+                See fitval/models.py for an example.
         recal: apply logistic recalibration to all models? In that case, recalibrated models are evaluated alongside the original ones.
         thr_risk: thresholds of predicted risk to compute metrics for
         sens: sensitivity values at which to compute metrics
@@ -252,6 +259,17 @@ def boot_metrics(data_path: Path,
             df_long.model_name = df_long.model_name.replace({'fit_val': 'fit'})
             df_long['m'] = 0  # Indicates that data was not imputed
             df_long['b'] = b  # Indicates the data sample (-1 for original data, 0, 1, 2, ... for bootstrap samples)
+
+            # Add FIT spline model predictions
+            if clf_fit is not None:
+                pred_spline = clf_fit.predict_proba(df.fit_val.to_numpy())[:, 1]
+                a = pd.DataFrame(pred_spline, columns=['y_pred'])
+                a['y_true'] = df.y_true.to_numpy()
+                a['model_name'] = 'fit-spline'
+                a['m'] = 0
+                a['b'] = b
+                a['idx'] = np.arange(df.shape[0])
+                df_long = pd.concat(objs=[df_long, a], axis=0)
         else:
             # Split input data into outcome and predictor variables
             y, x = df[['y_true']], df.drop(labels=['y_true'], axis=1)
@@ -321,9 +339,10 @@ def boot_metrics(data_path: Path,
     print('\nComputing metrics on bootstrap samples of original data...')
     if B > 0:
 
-        def _boot_iter(i):
+        def _boot_iter(i, print_msg=False):
             """Runs a single iteration of bootstrap"""
-            print('Bootstrap sample {}'.format(i))
+            if print_msg:
+                print('Bootstrap sample {}'.format(i))
 
             # Get seeds for this iteration: one for taking bootstrap sample, M for imputing data
             seeds_iter = seeds_boot[i]
@@ -353,7 +372,7 @@ def boot_metrics(data_path: Path,
             d = metrics_over_imputations(df_long, ymax, global_only=global_only, interp_step=interp_step, 
                                          thr_risk=thr_risk, sens=sens,
                                          rocpr=True, prob_min=prob_min, format_long=True, raw_rocpr=raw_rocpr,
-                                         thr_sens_fit=thr_sens_fit)
+                                         thr_sens_fit=thr_sens_fit, print_msg=False)
 
             # Store roc and pr curve data only for first nroc samples to avoid large objects
             if i > n_noci:
@@ -365,7 +384,7 @@ def boot_metrics(data_path: Path,
         def _process_chunk(indices):
             result = []
             for i in indices:
-                result_i = _boot_iter(i)
+                result_i = _boot_iter(i, print_msg=True)
                 result.append(result_i)
             return result
         
@@ -376,7 +395,7 @@ def boot_metrics(data_path: Path,
             boot_results = [item for sublist in boot_results for item in sublist]
         else:
             boot_results = [0] * B
-            for i in range(B):
+            for i in tqdm(range(B)):
                 boot_results[i] = _boot_iter(i)
         
         # Merge metrics computed on bootstrap samples, then merge with original data
@@ -541,7 +560,8 @@ def metrics_over_imputations(df: pd.DataFrame, ymax: pd.DataFrame,
                              format_long: bool = True,
                              raw_rocpr: bool = False, 
                              thr_sens_fit: pd.DataFrame = None,
-                             dca: bool = True):
+                             dca: bool = True,
+                             print_msg: bool = True):
     """For each model in df, compute metrics on each imputed dataset,
     then take the average value of each metric over imputations.
     
@@ -620,7 +640,7 @@ def metrics_over_imputations(df: pd.DataFrame, ymax: pd.DataFrame,
                                   interp_step=interp_step, ymax_bin=[prob_min, ym], ymax_lowess=[prob_min, ym], 
                                   global_only=global_only, cal=cal, rocpr=rocpr,
                                   wilson_ci=False, format_long=format_long, 
-                                  raw_rocpr=raw_rocpr, thr_mod=thr_mod_use, dca=dca)
+                                  raw_rocpr=raw_rocpr, thr_mod=thr_mod_use, dca=dca, print_msg=print_msg)
 
             metrics = _add_groupings(metrics, model_name=model_name, b=b, m=m)
 
@@ -895,7 +915,7 @@ def recalibration_models(df: pd.DataFrame, models: list = None):
 
 def recalibrate_predictions(df: pd.DataFrame, cal: dict):
     # Recalibrate original data
-    print('Recalibrating predictions...')
+    #print('Recalibrating predictions...')
 
     models = list(cal['platt'].keys())
     imputations = df.m.unique()

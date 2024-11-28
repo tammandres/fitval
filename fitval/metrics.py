@@ -59,7 +59,8 @@ def all_metrics(y_true: np.ndarray, y_pred: np.ndarray, fit: np.ndarray = None,
                 interp_step: float = 0.01, ymax_bin: list = [0.2, 1], ymax_lowess: list = [0.2, 1], 
                 global_only: bool = False, cal: bool = True, rocpr: bool = True,
                 wilson_ci: bool = False, format_long: bool = False,
-                raw_rocpr: bool = False, thr_mod: list = None, dca: bool = True):
+                raw_rocpr: bool = False, thr_mod: list = None, dca: bool = True,
+                print_msg: bool = True):
     """Get performance metrics for a single set of outcome labels and predictions
 
     Args
@@ -79,12 +80,12 @@ def all_metrics(y_true: np.ndarray, y_pred: np.ndarray, fit: np.ndarray = None,
         rocpr        : if True, compute ROC and PR curve data
         wilson_ci    : add Wilson CI to some of the computed proportions?
         format_long  : if True, most results are given in format [index col_1, ..., index col_n, metric_name, metric_value]
-        raw_rocpr    : if True, empirical ROC and precision recall curves are saved to disk
+        raw_rocpr    : if True, empirical ROC and precision recall curves are included in output
                        False by default as can take up a lot of disk space
         thr_mod      : model thresholds to use that correspond to FIT thresholds of [2, 10, 100] when computing metrics
                        For example, one could compute thresholds for the model that yield same sensitivities as FIT >= 2, 10 , 100
                        and then include these.
-        dca          : Genderate decision curve data?
+        dca          : if True, decision curve data are included in output
     
     Returns
         performance metrics in PerformanceData dataclass (see PerformanceData above)
@@ -108,11 +109,13 @@ def all_metrics(y_true: np.ndarray, y_pred: np.ndarray, fit: np.ndarray = None,
     # ---- Compute global performance metrics ----
 
     # Global discrimination metrics
-    print('... Computing global discrimination metrics')
+    if print_msg:
+        print('... Computing global discrimination metrics')
     perf.disc = global_discrimination_metrics(y_true, y_pred, format_long=format_long)
 
     # Global calibration metrics
-    print('... Computing global calibration metrics')
+    if print_msg:
+        print('... Computing global calibration metrics')
     if cal:
         perf.cal = global_calibration_metrics(y_true, y_pred, format_long=format_long)
     
@@ -131,7 +134,8 @@ def all_metrics(y_true: np.ndarray, y_pred: np.ndarray, fit: np.ndarray = None,
     #  Note: when this is bootstrapped, indicates PPV at each level of sensitivity
     #  but the thresholds for the FIT test and model that yield these levels of sensitivity
     #  may be different in each sample
-    print('... Computing ROC and PR curves')
+    if print_msg:
+        print('... Computing ROC and PR curves')
     if rocpr:
         perf.roc, perf.roc_int, perf.spec_int = roc_data(y_true, y_pred, interp_step, 
                                                          add_wilson_ci=wilson_ci, sens_add=sens, 
@@ -147,6 +151,8 @@ def all_metrics(y_true: np.ndarray, y_pred: np.ndarray, fit: np.ndarray = None,
     # GEt difference in PPVs (delta precision) and proportion reduction in tests 
     # for the model compared to the FIT test at each level of sensitivity
     if rocpr and fit is not None:
+        if print_msg:
+            print('... Computing delta PPV and proportion reduction in tests')
         if format_long:
             pr_int = perf.pr_int
             pr_int = pd.pivot(pr_int, index='recall', columns='metric_name', values='metric_value').reset_index()
@@ -165,17 +171,21 @@ def all_metrics(y_true: np.ndarray, y_pred: np.ndarray, fit: np.ndarray = None,
     #  the threshold can be precomputed on the original sample,
     #  and evaluated using the metric_at_fit_and_mod_threshold function below.
     if fit is not None:
-        print("Computing metrics at sensitivities corresponding to FIT thresholds", thr_fit)
+        if print_msg:
+            print("Computing metrics at sensitivities corresponding to FIT thresholds", thr_fit)
         perf.thr_sens_fit = metric_at_fit_sens(y_true, y_pred, fit, thr_fit=thr_fit, format_long=format_long)
     
     # Metrics at FIT thresholds thr_fit and corresponding model thresholds thr_mod
     #   For example, if thr_fit = [2, 10, 100] and thr_mod = [0.01, 0.02, 0.03]
     #   then ...
     if fit is not None and thr_mod is not None:
-        print("Computing metrics at FIT thresholds", thr_fit, "and corresponding model thresholds", thr_mod)
+        if print_msg:
+            print("Computing metrics at FIT thresholds", thr_fit, "and corresponding model thresholds", thr_mod)
         perf.thr_fit_mod = metric_at_fit_and_mod_threshold(y_true, y_pred, fit, thr_fit=thr_fit, thr_mod=thr_mod, format_long=format_long)
 
     # Metrics at predefined levels of sensitivity (e.g. 0.8, 0.9, 0.95)
+    if print_msg:
+        print("Computing metrics at sensitivities:", sens)
     thr_sens = metric_at_sens(y_true, y_pred, sens, format_long=format_long, clf_curve=clf_curve)
     perf.thr_sens = thr_sens
 
@@ -183,23 +193,27 @@ def all_metrics(y_true: np.ndarray, y_pred: np.ndarray, fit: np.ndarray = None,
     if cal:
 
         # Sensitivity, specificity, PPV, NPV at risk thresholds
-        print('... Computing metrics at thresholds of predicted risk')
+        if print_msg:
+            print('... Computing metrics at thresholds of predicted risk')
         perf.thr_risk = metric_at_risk(y_true, y_pred, thr=thr_risk, format_long=format_long)
 
         # Decision curve (takes more time to compute than rest of the code)
         if dca:
-            print('... Computing decision curves')
+            if print_msg:
+                print('... Computing decision curves')
             dc = dca_table(y_true, y_pred, format_long=format_long, thr=thr_risk)
             perf.dc = dc
 
             # Decision curve for FIT >= 10
             if fit is not None:
-                print('... Computing decision curves for FIT')
+                if print_msg:
+                    print('... Computing decision curves for FIT')
                 dc = dca_table(y_true, fit >= 10, model_name='fit10', thr=thr_risk, format_long=format_long)
                 perf.dc = pd.concat(objs=[perf.dc, dc], axis=0)
 
         # Binned calibration curve data
-        print('... Computing binned calibration curves with limits', ymax_bin)
+        if print_msg:
+            print('... Computing binned calibration curves with limits', ymax_bin)
         cal_bin = pd.DataFrame()
         for strategy in ['uniform']: #['uniform', 'quantile']:
             for ymax in ymax_bin:
@@ -217,7 +231,8 @@ def all_metrics(y_true: np.ndarray, y_pred: np.ndarray, fit: np.ndarray = None,
         perf.cal_bin = cal_bin
 
         # LOWESS calibration curve data
-        print('... Computing smooth calibration curves with limits', ymax_lowess)
+        if print_msg:
+            print('... Computing smooth calibration curves with limits', ymax_lowess)
         cal_smooth = pd.DataFrame()
         for frac in [0.67]: #[0.33, 0.67]:
             for ymax in ymax_lowess:
@@ -444,7 +459,7 @@ def lowess_calibration_curve(y_true: np.ndarray, y_prob: np.ndarray, ymax: float
 
     mask = y_prob > ymax
     if mask.any():
-        warnings.warn('ymax is greater than max predicted prob. Removing prob above ymax...')
+        #warnings.warn('ymax is lower than max predicted prob. Removing prob above ymax...')
         y_true = y_true[~mask]
         y_prob = y_prob[~mask]
     
@@ -769,7 +784,6 @@ def pr_gain(y_true: np.ndarray, y_pred: np.ndarray, fit: np.ndarray, step: float
     at each level of sensitivity in the precision-recall curve
     NB. step must be the same interpolation step size used when interpolating the PR curve
     of the model """
-    print('... Computing delta PPV and proportion reduction in tests')
 
     # Interpolated PR-curve data for the model
     if pr_mod is None:
@@ -869,7 +883,6 @@ def metric_at_sens(y_true: np.ndarray, y_pred: np.ndarray, sens: list = [0.8, 0.
     """
     thr_sens = pd.DataFrame()
     for s in sens:
-        print('... Computing metrics at sensitivity', s)
         m = metric_at_single_sens(y_true, y_pred, target_sens=s, clf_curve=clf_curve)
         m = pd.DataFrame([m])
         thr_sens = pd.concat(objs=[m, thr_sens], axis=0)

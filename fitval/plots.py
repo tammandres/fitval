@@ -18,6 +18,7 @@ def get_default_colors(models):
     colors = ['C1', 'C2', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9']
     model_colors = {model: colors[i % len(colors)] for i, model in enumerate(models)}
     model_colors['fit'] = 'red'
+    model_colors['fit-spline'] = 'red'
     return model_colors
 
 
@@ -40,21 +41,31 @@ def plot_cal_bin(run_path: Path, model_labels: dict = None,
     """
     print('\nPlotting binned calibration curves...')
 
+    # Read data
     df = pd.read_csv(run_path / CAL_BIN_NOCI)
     if 'metric_name' in df.columns:
         name = 'prob_true'
         df = df.loc[df.metric_name == name].rename(columns={'metric_value': name})
 
+    # Model names
     if models_incl is not None:
-        models = models_incl
-        #df = df.loc[df.model_name.isin(models_incl)]
-        models = [mod for mod in models if mod in df.model_name.unique()]
+        models = [mod for mod in models_incl if mod in df.model_name.unique()]
     else:
         models = df.model_name.unique()  # Models to be plotted
+    
+    # Model colors and labels
+    if model_colors is None:
+        model_colors = get_default_colors(models)
+    if model_labels is None:
+        model_labels = {model:model for model in models}
 
     # Do not plot bootstrap samples
     if exclude_boot:
         df = df.loc[df['b'] == -1]
+    
+    # For compatibility with older code
+    if 'fit_ub' not in df.columns:
+        df['fit_ub'] = 'none'
 
     # Groups: one plot per group
     df.loc[df.ymax > 0.2, 'ymax'] = 1  # For file names and grouping only
@@ -560,9 +571,9 @@ def plot_dca(run_path: Path, model_labels: dict = None, model_colors: dict = Non
 
     # Note: the 'all', 'none', and 'fit10' were computed separately under each model,
     # but are the same for all models
-    all = df.loc[(df.model == 'all') & (df.model_name == models[0])]
-    none = df.loc[(df.model == 'none') & (df.model_name == models[0])]
-    fit10 = df.loc[(df.model == 'fit10') & (df.model_name == models[0])]
+    all = df.loc[(df.model == 'all')]
+    none = df.loc[(df.model == 'none')]
+    fit10 = df.loc[(df.model == 'fit10')]
     model = df.loc[df.model == 'model']
 
     # Plot net benefit curves for models
