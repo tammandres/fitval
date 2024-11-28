@@ -24,7 +24,8 @@ metric_names = {
     'log_intercept': 'Log intercept', 
     'log_slope': 'Log slope',
     'thr_fit': 'FIT threshold (ug/g)',
-    'thr': 'Threshold approx (%)',
+    'thr': 'Model threshold (%)',
+    'thr_mod': 'Model threshold (%)',
     'model_name': 'Model',
     'sens': 'Sensitivity (%)', 
     'spec': 'Specificity (%)', 
@@ -42,7 +43,45 @@ metric_names = {
     'tp1000': 'Detected cancers per 1000 tests', 
     'fp1000': 'False positive tests per 1000 tests', 
     'tn1000': 'True negative tests per 1000 tests', 
-    'fn1000': 'Missed cancers per 1000 tests', 
+    'fn1000': 'Missed cancers per 1000 tests',
+
+    'sens_fit': 'Sensitivity (%), FIT', 
+    'spec_fit': 'Specificity (%), FIT', 
+    'npv_fit':'NPV (%), FIT', 
+    'ppv_fit': 'PPV (%), FIT',
+    'pp_fit': 'Positive tests (FIT)', 
+    'pp_per_cancer_fit': 'Positive tests per cancer (FIT)', 
+    'pn_fit': 'Negative tests (FIT)',
+    'tp_fit': 'Detected cancers (FIT)', 
+    'fp_fit': 'False positive tests (FIT)', 
+    'tn_fit': 'True negative tests (FIT)', 
+    'fn_fit': 'Missed cancers (FIT)',
+    'pp1000_fit': 'Positive tests per 1000 tests (FIT)', 
+    'pn1000_fit': 'Negative tests per 1000 tests (FIT)',
+    'tp1000_fit': 'Detected cancers per 1000 tests (FIT)', 
+    'fp1000_fit': 'False positive tests per 1000 tests (FIT)', 
+    'tn1000_fit': 'True negative tests per 1000 tests (FIT)', 
+    'fn1000_fit': 'Missed cancers per 1000 tests (FIT)',
+
+    'sens_mod': 'Sensitivity (%), model', 
+    'spec_mod': 'Specificity (%), model', 
+    'npv_mod':'NPV (%), model', 
+    'ppv_mod': 'PPV (%), model',
+    'pp_mod': 'Positive tests (model)', 
+    'pp_per_cancer_mod': 'Positive tests per cancer (model)', 
+    'pn_mod': 'Negative tests (model)',
+    'tp_mod': 'Detected cancers (model)', 
+    'fp_mod': 'False positive tests (model)', 
+    'tn_mod': 'True negative tests (model)', 
+    'fn_mod': 'Missed cancers (model)',
+    'pp1000_mod': 'Positive tests per 1000 tests (model)', 
+    'pn1000_mod': 'Negative tests per 1000 tests (model)',
+    'tp1000_mod': 'Detected cancers per 1000 tests (model)', 
+    'fp1000_mod': 'False positive tests per 1000 tests (model)', 
+    'tn1000_mod': 'True negative tests per 1000 tests (model)', 
+    'fn1000_mod': 'Missed cancers per 1000 tests (model)',
+
+
 }
 
 
@@ -206,9 +245,13 @@ def reformat_disc_cal(data_path: Path, save_path: Path, model_labels: dict = Non
         check_nan(df)  ## It's OK for max_sens to be nan here, it is not relevant anyway, as not computed for FIT at thr 2/10 etc
 
         ## Rescale to %
-        mask = df.metric_name.isin(['sens', 'spec', 'ppv', 'npv'])
+        mask = df.metric_name.isin(['sens', 'spec', 'ppv', 'npv',
+                                    'sens_fit', 'spec_fit', 'ppv_fit', 'npv_fit',
+                                    'sens_mod', 'spec_mod', 'ppv_mod', 'npv_mod'])
         df.loc[mask, ['metric_value', 'ci_low', 'ci_high']] *= 100   
         df.loc[(df.model_name != 'fit') & (df.metric_name.isin(['thr', 'thr_fit', 'thr_mod'])), ['metric_value', 'ci_low', 'ci_high']] *= 100
+        if 'thr_mod' in df.columns:
+            df.thr_mod = df.thr_mod * 100
 
         ## Drop rows with nan
         df.isna().sum()
@@ -234,6 +277,7 @@ def reformat_disc_cal(data_path: Path, save_path: Path, model_labels: dict = Non
         df = pd.concat(objs=[df.loc[(df.thr_fit == t) & (df.model_name == m)] for t in thr for m in model_order if m in df.model_name.unique()], axis=0)
 
         ## Tidy model name and column names
+        df = df.rename(columns=metric_names)
         if model_labels is not None:
             df.model_name = df.model_name.replace(model_labels)
         df.to_csv(save_path / out_file, index=False)
