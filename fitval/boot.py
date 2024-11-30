@@ -251,52 +251,46 @@ def boot_metrics(data_path: Path,
     if not fit_spline:  # Should the fitted FIT-only spline model be subsequently evaluated?
         clf_fit = None
 
-    # Get outcome and predictions for each model and the FIT test
-    def _outcome_and_prediction_in_long_format(df, b):
-        if data_has_predictions:
-            df['idx'] = np.arange(df.shape[0])  # Indicates row of the original dataframe in wide format
-            df_long = df.melt(id_vars=['y_true', 'idx'], value_vars=['fit_val'] + model_columns, var_name='model_name', value_name='value')
-            df_long = df_long.rename(columns={'value': 'y_pred'})
-            df_long.model_name = df_long.model_name.replace({i: j for i, j in zip(model_columns, model_names)})
-            df_long.model_name = df_long.model_name.replace({'fit_val': 'fit'})
-            df_long['m'] = 0  # Indicates that data was not imputed
-            df_long['b'] = b  # Indicates the data sample (-1 for original data, 0, 1, 2, ... for bootstrap samples)
+    # Get outcome and predictions for each model and the FIT test in long format
+    if data_has_predictions:
+        # If input data already has model predictions, just transform to long format
+        df['idx'] = np.arange(df.shape[0])  # Indicates row of the original dataframe in wide format
+        df_long = df.melt(id_vars=['y_true', 'idx'], value_vars=['fit_val'] + model_columns, var_name='model_name', value_name='value')
+        df_long = df_long.rename(columns={'value': 'y_pred'})
+        df_long.model_name = df_long.model_name.replace({i: j for i, j in zip(model_columns, model_names)})
+        df_long.model_name = df_long.model_name.replace({'fit_val': 'fit'})
+        df_long['m'] = 0  # Indicates that data was not imputed
 
-            # Add FIT spline model predictions
-            if clf_fit is not None:
-                pred_spline = clf_fit.predict_proba(df.fit_val.to_numpy())[:, 1]
-                a = pd.DataFrame(pred_spline, columns=['y_pred'])
-                a['y_true'] = df.y_true.to_numpy()
-                a['model_name'] = 'fit-spline'
-                a['m'] = 0
-                a['b'] = b
-                a['idx'] = np.arange(df.shape[0])
-                df_long = pd.concat(objs=[df_long, a], axis=0)
-        else:
-            # Split input data into outcome and predictor variables
-            y, x = df[['y_true']], df.drop(labels=['y_true'], axis=1)
-            
-            # Impute original data M times if it has missing values
-            # If there are no missing values, the function just returns original dataframe
-            # and adds a single value for the imputed dataset indicator (m = 0)
-            x_imp, y_imp, idx_imp = impute_xy(x, y, M, max_iter, seeds_orig, impute_with_y)
+        # Also add fit-spline model predictions
+        if clf_fit is not None:
+            pred_spline = clf_fit.predict_proba(df.fit_val.to_numpy())[:, 1]
+            a = pd.DataFrame(pred_spline, columns=['y_pred'])
+            a['y_true'] = df.y_true.to_numpy()
+            a['model_name'] = 'fit-spline'
+            a['m'] = 0
+            a['idx'] = np.arange(df.shape[0])
+            df_long = pd.concat(objs=[df_long, a], axis=0)
+    else:
+        # Split input data into outcome and predictor variables
+        y, x = df[['y_true']], df.drop(labels=['y_true'], axis=1)
+        
+        # Impute original data M times if it has missing values
+        # If there are no missing values, the function just returns original dataframe
+        # and adds a single value for the imputed dataset indicator (m = 0)
+        x_imp, y_imp, idx_imp = impute_xy(x, y, M, max_iter, seeds_orig, impute_with_y)
 
-            # Get true outcome labels and predicted probabilities for each imputed dataset
-            # This applies the models specified in model_names, 
-            # applies the FIT-only spline model if clf_fit is not None,
-            # and also adds the fit test values as a 'dummy' model.
-            df_long = predict(x_imp, y_imp, idx_imp, model_names, repl_ypred_nan, clf_fit, b=-1)
-        return df_long
-
-    df_long = _outcome_and_prediction_in_long_format(df, b=-1)
-
+        # Get true outcome labels and predicted probabilities for each imputed dataset
+        # This applies the models specified in model_names, 
+        # applies the FIT-only spline model if clf_fit is not None,
+        # and also adds the fit test values as a 'dummy' model.
+        df_long = predict(x_imp, y_imp, idx_imp, model_names, repl_ypred_nan, clf_fit)
+ 
     # Recalibrate predictions
     if recal:
         
         # Estimate recalibration models and apply
         cal = recalibration_models(df_long)
         dfcal = recalibrate_predictions(df_long, cal)
-        
         df_long = pd.concat(objs=[df_long, dfcal], axis=0)
         #df_long.groupby(['model_name', 'm', 'b']).size()  # quick check
 
@@ -332,7 +326,7 @@ def boot_metrics(data_path: Path,
     d = metrics_over_imputations(df_long, ymax, global_only=global_only, interp_step=interp_step, 
                                  thr_risk=thr_risk, sens=sens,
                                  rocpr=True, prob_min=prob_min, format_long=True, raw_rocpr=raw_rocpr,
-                                 thr_sens_fit=thr_sens_fit, thr_mod_add=thr_mod_add)
+                                 thr_sens_fit=thr_sens_fit, thr_mod_add=thr_mod_add, b=-1)
     data = _merge_data([data, d])
 
     # If no bootstrap samples are requested, return metrics computed on original data without CI
@@ -343,6 +337,15 @@ def boot_metrics(data_path: Path,
     print('\nComputing metrics on bootstrap samples of original data...')
     if B > 0:
 
+        # Precompute a few quantities that are used in bootstrap sampling
+        y = df[['y_true']]
+        nobs = len(y)
+        nrep = int(df_long.shape[0] / nobs)
+        idx0 = np.where(y == 0)[0]
+        idx1 = np.where(y == 1)[0]
+        nobs0 = len(idx0)
+        nobs1 = len(idx1)
+        
         def _boot_iter(i, print_msg=False):
             """Runs a single iteration of bootstrap"""
             if print_msg:
@@ -352,31 +355,34 @@ def boot_metrics(data_path: Path,
             seeds_iter = seeds_boot[i]
             
             # Generate a bootstrap sample
-            y = df[['y_true']]
             rng = np.random.default_rng(seed=seeds_iter[0])
             if stratified_boot:
-                idx0 = np.where(y == 0)[0]
-                idx1 = np.where(y == 1)[0]
-                idx0_boot = rng.choice(a=idx0, size=len(idx0), replace=True)
-                idx1_boot = rng.choice(a=idx1, size=len(idx1), replace=True)
+                idx0_boot = rng.choice(a=idx0, size=nobs0, replace=True)
+                idx1_boot = rng.choice(a=idx1, size=nobs1, replace=True)
                 idx_boot = np.concatenate([idx0_boot, idx1_boot])
             else:
-                idx_boot = rng.choice(a=np.arange(len(y)), size=len(y), replace=True)
-            df_boot = df.iloc[idx_boot, :]
+                idx_boot = rng.choice(a=np.arange(nobs), size=nobs, replace=True)
             
-            # Reformat data
-            df_long = _outcome_and_prediction_in_long_format(df_boot, b=i)
-
-            # Recalibrate predictions of some models using previously estimated calibration models
-            if recal:
-                dfcal = recalibrate_predictions(df_long, cal=cal)
-                df_long = pd.concat(objs=[df_long, dfcal], axis=0)
+            # Get predictions in long format
+            if data_has_predictions: 
+                # If data already has predictions, we just want to index these in precomputed df_long for efficiency
+                idx_boot = np.concatenate([idx_boot + nobs * i for i in range(nrep)])
+                df_long_boot = df_long.iloc[idx_boot]
+            else:
+                df_boot = df.iloc[idx_boot, :]
+                y_boot, x_boot = df_boot[['y_true']], df_boot.drop(labels=['y_true'], axis=1)
+                x_imp_boot, y_imp_boot, idx_imp_boot = impute_xy(x_boot, y_boot, M, max_iter, seeds_orig, impute_with_y)
+                df_long_boot = predict(x_imp_boot, y_imp_boot, idx_imp_boot, model_names, repl_ypred_nan, clf_fit)
+                if recal:
+                    dfcal = recalibrate_predictions(df_long_boot, cal=cal)
+                    df_long_boot = pd.concat(objs=[df_long_boot, dfcal], axis=0)
 
             # Compute metrics for each model, bootstrap sample, and imputed dataset combination
-            d = metrics_over_imputations(df_long, ymax, global_only=global_only, interp_step=interp_step, 
+            d = metrics_over_imputations(df_long_boot, ymax, global_only=global_only, interp_step=interp_step, 
                                          thr_risk=thr_risk, sens=sens,
                                          rocpr=True, prob_min=prob_min, format_long=True, raw_rocpr=raw_rocpr,
-                                         thr_sens_fit=thr_sens_fit, print_msg=False, thr_mod_add=thr_mod_add)
+                                         thr_sens_fit=thr_sens_fit, print_msg=False, thr_mod_add=thr_mod_add,
+                                         b=i)
 
             # Store roc and pr curve data only for first nroc samples to avoid large objects
             if i > n_noci:
@@ -419,7 +425,7 @@ def boot_metrics(data_path: Path,
     noci_data = boot_noci(data=data, save_path=save_path, nboot=n_noci, seed=random_state)
 
     # Plot bootstrap distributions
-    if plot_boot:
+    if plot_boot and save_path is not None:
         plot_boot_metrics(data, save_path)
 
     toc = time.time()
@@ -429,7 +435,7 @@ def boot_metrics(data_path: Path,
 
 # ~ Helpers: make predictions using existing models ~
 def predict(x_imp: pd.DataFrame, y_imp: pd.DataFrame, idx_imp: np.ndarray, model_names: list,
-            repl_ypred_nan: bool = False, clf_fit = None, b: int = -1):
+            repl_ypred_nan: bool = False, clf_fit = None):
     """Helper function to make predictions using models in model_names"""
 
     # Result container
@@ -444,7 +450,6 @@ def predict(x_imp: pd.DataFrame, y_imp: pd.DataFrame, idx_imp: np.ndarray, model
                                     'm': x_imp['m'].to_numpy(), 
                                     'idx': idx_imp})
         p['model_name'] = mname
-        p['b'] = b  # Include sample indicator for compatibility with bootstrap data
         df = pd.concat(objs=[df, p], axis=0)
 
     # Add predictions made by the spline model?
@@ -455,7 +460,6 @@ def predict(x_imp: pd.DataFrame, y_imp: pd.DataFrame, idx_imp: np.ndarray, model
                                     'm': x_imp['m'].to_numpy(), 
                                     'idx': idx_imp})
         p['model_name'] = 'fit-spline'
-        p['b'] = b  # Include sample indicator for compatibility with bootstrap data
         df = pd.concat(objs=[df, p], axis=0)
     
     # Add FIT test as a dummy model
@@ -465,7 +469,6 @@ def predict(x_imp: pd.DataFrame, y_imp: pd.DataFrame, idx_imp: np.ndarray, model
                                     'm': x_imp['m'].to_numpy(), 
                                     'idx': idx_imp})
         p['model_name'] = 'fit'
-        p['b'] = b  # Include sample indicator for compatibility with bootstrap data
         df = pd.concat(objs=[df, p], axis=0)
     
     if repl_ypred_nan:  # For testing only
@@ -566,7 +569,8 @@ def metrics_over_imputations(df: pd.DataFrame, ymax: pd.DataFrame,
                              thr_sens_fit: pd.DataFrame = None,
                              dca: bool = True,
                              print_msg: bool = True,
-                             thr_mod_add: list = None):
+                             thr_mod_add: list = None,
+                             b: int = -1):
     """For each model in df, compute metrics on each imputed dataset,
     then take the average value of each metric over imputations.
     
@@ -590,7 +594,7 @@ def metrics_over_imputations(df: pd.DataFrame, ymax: pd.DataFrame,
     """
 
     # Input check
-    columns = ['y_true', 'y_pred', 'model_name', 'b', 'm']
+    columns = ['y_true', 'y_pred', 'model_name', 'm']
     if not np.all([c in df.columns for c in columns]):
         raise ValueError("df must contain all columns in " + str(columns))
     if not np.any(df.model_name == 'fit'):
@@ -599,7 +603,7 @@ def metrics_over_imputations(df: pd.DataFrame, ymax: pd.DataFrame,
     # Result container, boostrap sample indicator, FIT test values
     # In predict.py, FIT test values are included once for original data and each bootstrap sample
     data = PerformanceData()
-    b = df.b.iloc[0]
+    #b = df.b.iloc[0]
     fit = df.loc[df.model_name == 'fit', 'y_pred'].to_numpy().squeeze()
 
     # Loop over models, then over imputed datasets
