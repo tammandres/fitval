@@ -319,9 +319,6 @@ def dca_table(y_true: np.ndarray, y_prob: np.ndarray, thr: list = None, model_na
     """Table for decision curve analysis"""
 
     if thr is None:
-        #thr = np.linspace(0, 0.2, 41)  # 0.5% increment: 0, 0.005, 0.01, 0.015, ..., 0.195, 0.2
-        #thr = np.sort(np.append(thr, [0.006]))  # Add point 0.006 (0.6%)
-        #thr = np.unique(np.round(thr, 3))
         thr_low = np.arange(0, 1, 0.05)
         thr_high = np.arange(1, 51, 1)
         thr = np.append(thr_low, thr_high)
@@ -332,17 +329,28 @@ def dca_table(y_true: np.ndarray, y_prob: np.ndarray, thr: list = None, model_na
         thr = np.array(thr)
         thr = np.unique(np.round(thr, 6))
     
-    d = pd.DataFrame(zip(y_true, y_prob), columns=['y_true', model_name])
+    d = pd.DataFrame({'y_true': y_true, model_name: y_prob})
     r = dc.dca(data=d, outcome='y_true', modelnames=[model_name], thresholds=thr)
 
-    # Add false negative rate
-    r['fn_rate'] = r.prevalence - r.tp_rate
+    # Add other diagnostic metrics to DCA table 
+    r['pp'] = r.n * r.test_pos_rate  # num positive tests
+    r['pn'] = r.n - r.pp  # num negative tests
+    r['tp'] = r.n * r.tp_rate  # true pos count
+    r['fp'] = r.n * r.fp_rate  # false pos count
+    r['tn'] = r.n * (1 - r.prevalence) - r.fp  # true neg count
+    r['fn'] = r.n * r.prevalence - r.tp  # false neg count
+    r['test_neg_rate'] = r.pn / r.n  # proportion of negative tests
+    r['tn_rate'] = r.tn / r.n  # proportion of true negatives
+    r['fn_rate'] = r.fn / r.n  # proportion of false negatives
+    r['pp1000'] = r.test_pos_rate * 1000  # num positive tests per 1000 tests
+    r['pn1000'] = r.test_neg_rate * 1000  # num negative tests per 1000 tests
+    r['tp1000'] = r.tp_rate * 1000  # true positives per 1000 tests
+    r['fp1000'] = r.fp_rate * 1000
+    r['tn1000'] = r.tn_rate * 1000
+    r['fn1000'] = r.fn_rate * 1000
 
     if format_long:
-        value_cols = ['n', 'prevalence', 'harm', 'test_pos_rate',
-                      'tp_rate', 'fp_rate', 'net_benefit', 'net_intervention_avoided',
-                      'fn_rate']
-        r = pd.melt(r, id_vars=['model', 'threshold'], value_vars=value_cols, var_name='metric_name', value_name='metric_value')
+        r = pd.melt(r, id_vars=['model', 'threshold'], value_vars=None, var_name='metric_name', value_name='metric_value')
 
     return r
 
