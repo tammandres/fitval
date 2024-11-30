@@ -9,3 +9,4 @@ statsmodels==0.13.2
 loess==2.1.2
 dcurves==1.0.4
 joblib==1.4.2
+tqdm==4.67.1

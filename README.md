@@ -6,7 +6,7 @@ Functions for validating colorectal cancer (CRC) risk prediction models that com
 ## Installation 
 
 ```
-conda create -n fitval python=3.10
+conda create -n fitval python=3.9
 conda activate fitval
 pip install -r requirements.txt
 ```

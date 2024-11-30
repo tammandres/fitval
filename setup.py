@@ -20,6 +20,6 @@ setup(
         "Operating System :: OS Independent",
     ],
     install_requires=requirements,
-    python_requires=">=3.10",
+    python_requires=">=3.9",
     entry_points={"console_scripts": ["fitval = bin.cli:main"]},
 )
