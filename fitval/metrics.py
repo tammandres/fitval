@@ -172,7 +172,7 @@ def all_metrics(y_true: np.ndarray, y_pred: np.ndarray, fit: np.ndarray = None,
     #  and evaluated using the metric_at_fit_and_mod_threshold function below.
     if fit is not None:
         if print_msg:
-            print("Computing metrics at sensitivities corresponding to FIT thresholds", thr_fit)
+            print("... Computing metrics at sensitivities corresponding to FIT thresholds", thr_fit)
         perf.thr_sens_fit = metric_at_fit_sens(y_true, y_pred, fit, thr_fit=thr_fit, format_long=format_long)
     
     # Metrics at FIT thresholds thr_fit and corresponding model thresholds thr_mod
@@ -180,12 +180,12 @@ def all_metrics(y_true: np.ndarray, y_pred: np.ndarray, fit: np.ndarray = None,
     #   then ...
     if fit is not None and thr_mod is not None:
         if print_msg:
-            print("Computing metrics at FIT thresholds", thr_fit, "and corresponding model thresholds", thr_mod)
+            print("... Computing metrics at FIT thresholds", thr_fit, "and corresponding model thresholds", thr_mod)
         perf.thr_fit_mod = metric_at_fit_and_mod_threshold(y_true, y_pred, fit, thr_fit=thr_fit, thr_mod=thr_mod, format_long=format_long)
 
     # Metrics at predefined levels of sensitivity (e.g. 0.8, 0.9, 0.95)
     if print_msg:
-        print("Computing metrics at sensitivities:", sens)
+        print("... Computing metrics at sensitivities:", sens)
     thr_sens = metric_at_sens(y_true, y_pred, sens, format_long=format_long, clf_curve=clf_curve)
     perf.thr_sens = thr_sens
 
