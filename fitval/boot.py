@@ -222,8 +222,8 @@ def boot_metrics(data_path: Path,
     sens_fit = (dfsub.loc[dfsub.fit_val >= 10, 'y_true'].sum() / dfsub.y_true.sum()).item()
     thr_risk = sorted(list(set(thr_risk + [risk_fit])))  # Add risk_fit to risk levels at which models are evaluated
     sens = sorted(list(set(sens + [sens_fit])))  # add sens_fit to sensitivity levels at which models are evaluated
-    print('Estimated risk for FIT == 10:', risk_fit)
-    print('Estimated sensitivity for FIT >= 10:', sens_fit)
+    print('... Estimated risk for FIT == 10:', risk_fit)
+    print('... Estimated sensitivity for FIT >= 10:', sens_fit)
 
     if plot_fit_model:
         test = dfsub.copy()
@@ -306,7 +306,7 @@ def boot_metrics(data_path: Path,
     for t in thr_fit:
         s = (df.loc[df.fit_val >= t, 'y_true'].sum() / df.y_true.sum()).item()
         sens_fit_all.append(s)
-        print('Estimated sensitivity for FIT >= {}: {}'.format(t, s))
+        print('... Estimated sensitivity for FIT >= {}: {}'.format(t, s))
 
     # For each model, find thresholds that yield the sensitivities corresponding to FIT thresholds
     thr_sens_fit = pd.DataFrame()
@@ -973,7 +973,7 @@ def _plot_boot(df, save_path, out_name):
     models = df[model_name_col].unique()
     models_excl = ['all', 'none', 'fit10']  # Exclude 'all', 'none', 'fit10' from DC curves
     models = [m for m in models if m not in models_excl]
-    groups = groups.loc[groups.model_name.isin(models)]
+    groups = groups.loc[groups.model_name.isin(models)].reset_index(drop=True)
 
     # Metrics to include
     metrics = df[metric_name_col].unique()
@@ -1017,7 +1017,9 @@ def _plot_boot(df, save_path, out_name):
         # Plot metrics into each column of this row
         dfrow = pd.DataFrame(row).transpose().merge(df, how='inner')
 
-        ax = subfig.subplots(nrows=1, ncols=len(metrics))     
+        ax = subfig.subplots(nrows=1, ncols=len(metrics))
+        if len(metrics) == 1:
+            ax = [ax]   
         for j, metric_name in enumerate(metrics):
             
             # Bootstrap distribution
@@ -1037,7 +1039,7 @@ def _plot_boot(df, save_path, out_name):
             if dfsub.std() < 1e-5:   # If there is almost no variation in the metric over samples do not plot.
                 ax[j].set_visible(False)
                 
-    plt.subplots_adjust(top=0.75, hspace=0.75, wspace=0.5)
+    #plt.subplots_adjust(top=0.75, hspace=0.75, wspace=0.5)  # can make layout worse - subplot labels aligned too much to the left
     plt.savefig(save_path / out_name, dpi=75, facecolor='white', bbox_inches='tight')
     plt.close()
 
