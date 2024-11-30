@@ -17,3 +17,4 @@ nchunks: int = 15
 raw_rocpr: bool = False
 plot_boot: bool = True
 return_boot_samples: bool = False
+thr_mod_add: list = [0.03, 0.0064]
