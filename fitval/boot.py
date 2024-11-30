@@ -37,8 +37,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import warnings
 from tqdm import tqdm
-import contextlib
-import joblib
+
 
 #warnings.simplefilter(action='ignore', category=FutureWarning)  # Suppress pandas future warnings (for dcurves package)
 warnings.simplefilter(action='ignore')  # Suppress all warnings for smoother output (not ideal)
@@ -96,7 +95,8 @@ def boot_metrics(data_path: Path,
                  raw_rocpr: bool = False, 
                  plot_boot: bool = True,
                  return_boot_samples: bool = False,
-                 plot_fit_model: bool = True
+                 plot_fit_model: bool = True,
+                 thr_mod_add: list = None
                  ):
     """Compute performance metrics for predefined models on dataset (x, y), 
     and obtain bootstrap confidence intervals for the metrics
@@ -133,7 +133,9 @@ def boot_metrics(data_path: Path,
         nchunks: number of chunks to divide the B bootstrap samples into for parallel processing
         raw_rocpr: do not save raw ROC and PR curves (can take up disk space)
         plot_boot: plot bootstrap distributions of some metrics?
-        return_boot_samples: if True, a dataclass containing bootstrap samples is returned.
+        return_boot_samples: if True, a dataclass containing bootstrap samples is returned
+        plot_fit_model: if True, the fit-spline model is plotted
+        thr_mod_add: additional model thresholds that need to be compared to FIT threshold 10, e.g. [0.006, 0.03]
     
     Returns
         if return_boot_samples is False:
@@ -307,7 +309,7 @@ def boot_metrics(data_path: Path,
         s = (df.loc[df.fit_val >= t, 'y_true'].sum() / df.y_true.sum()).item()
         sens_fit_all.append(s)
         print('... Estimated sensitivity for FIT >= {}: {}'.format(t, s))
-
+    
     # For each model, find thresholds that yield the sensitivities corresponding to FIT thresholds
     thr_sens_fit = pd.DataFrame()
     for model_name in df_long.model_name.unique():
@@ -321,6 +323,8 @@ def boot_metrics(data_path: Path,
                                   index=[0])
                 thr_sens_fit = pd.concat(objs=[thr_sens_fit, p], axis=0)
     thr_sens_fit = thr_sens_fit.reset_index(drop=True)
+
+    # Add thresholds 
     if save_path is not None:
         thr_sens_fit.to_csv(save_path / 'fit_and_model_thresholds.csv', index=False)
 
@@ -328,7 +332,7 @@ def boot_metrics(data_path: Path,
     d = metrics_over_imputations(df_long, ymax, global_only=global_only, interp_step=interp_step, 
                                  thr_risk=thr_risk, sens=sens,
                                  rocpr=True, prob_min=prob_min, format_long=True, raw_rocpr=raw_rocpr,
-                                 thr_sens_fit=thr_sens_fit)
+                                 thr_sens_fit=thr_sens_fit, thr_mod_add=thr_mod_add)
     data = _merge_data([data, d])
 
     # If no bootstrap samples are requested, return metrics computed on original data without CI
@@ -372,7 +376,7 @@ def boot_metrics(data_path: Path,
             d = metrics_over_imputations(df_long, ymax, global_only=global_only, interp_step=interp_step, 
                                          thr_risk=thr_risk, sens=sens,
                                          rocpr=True, prob_min=prob_min, format_long=True, raw_rocpr=raw_rocpr,
-                                         thr_sens_fit=thr_sens_fit, print_msg=False)
+                                         thr_sens_fit=thr_sens_fit, print_msg=False, thr_mod_add=thr_mod_add)
 
             # Store roc and pr curve data only for first nroc samples to avoid large objects
             if i > n_noci:
@@ -561,7 +565,8 @@ def metrics_over_imputations(df: pd.DataFrame, ymax: pd.DataFrame,
                              raw_rocpr: bool = False, 
                              thr_sens_fit: pd.DataFrame = None,
                              dca: bool = True,
-                             print_msg: bool = True):
+                             print_msg: bool = True,
+                             thr_mod_add: list = None):
     """For each model in df, compute metrics on each imputed dataset,
     then take the average value of each metric over imputations.
     
@@ -628,6 +633,11 @@ def metrics_over_imputations(df: pd.DataFrame, ymax: pd.DataFrame,
                 dfthr = thr_sens_fit.loc[(thr_sens_fit.model_name == model_name) & (thr_sens_fit.m == m)]
                 thr_fit_use = dfthr.thr_fit.tolist()
                 thr_mod_use = dfthr.thr_mod.tolist()
+
+                ## Add additional model thresholds, where model is to be compared against FIT at threshold 10
+                if thr_mod_add is not None:  
+                    thr_fit_use += [10 for __ in range(len(thr_mod_add))]
+                    thr_mod_use += thr_mod_add
 
                 #thr_risk = thr_risk + thr_mod_use  # Adds a bit too many values, esp if multiple FIT thrs and models.
                 #thr_risk = list(set(thr_risk))
