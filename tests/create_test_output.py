@@ -7,7 +7,7 @@ from fitval.reformat import reformat_disc_cal
 test_path = PROJECT_ROOT / 'tests' / 'test_boot'
 test_path.mkdir(exist_ok=True, parents=True)
 
-# Paths to data created by create_dummy_data.py (ran for 10.45 minutes)
+# Paths to data created by create_dummy_data.py (ran for __ minutes)
 data_path = PROJECT_ROOT / 'tests' / 'test_data' / 'pred.csv'
 data_ci, data_noci = boot_metrics(data_path=data_path, save_path=test_path, data_has_predictions=True, 
                                   model_names=['logistic-full', 'logistic-fast'], B=1000, 
