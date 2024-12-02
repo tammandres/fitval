@@ -1,7 +1,14 @@
 """Apply prediction models to data and compute metrics with bootstrap confidence intervals,
 imputing the data in each bootstrap sample if there are missing values
 
-Process with imputation
+Process without imputation
+1. Take a bootstrap sample of the original data
+2. Use existing model predictions stored in the data, or apply prediction model(s) to the sample
+3. Compute performance metrics
+4. Repeat steps 1-3 B times to obtain a bootstrap distribution for each performance metric
+5. Use bootstrap percentile method to get confidence intervals for the performance metric
+
+Process with imputation (computationally more expensive)
 1. Take a bootstrap sample of the original data
 2. Impute the sample M times
 3. Apply prediction model(s) to each of the M imputed datasets
@@ -10,17 +17,10 @@ Process with imputation
 6. Repeat steps 1-5 B times to obtain a bootstrap distribution for each performance metric
 7. Use bootstrap percentile method to get confidence intervals for the performance metric
 
-Process without imputation
-1. Take a bootstrap sample of the original data
-2. Apply prediction model(s) to the sample (or use existing model predictions)
-3. Compute performance metrics
-4. Repeat steps 1-5 B times to obtain a bootstrap distribution for each performance metric
-5. Use bootstrap percentile method to get confidence intervals for the performance metric
-
 Note:
 * In some bootstrap samples, metrics for FIT test can be nan at low sensitivities (e.g. 0.5).
-  For example, it may be that at the highest FIT threshold, sensitivity is 53%, 
-  so there are no lower sensitivities.
+  For example, it may be that at the lowest possible FIT threshold, sensitivity is 53%, 
+  so FIT test cannot be evaluated at a lower sensitivity.
 """
 import numpy as np
 import pandas as pd
@@ -28,7 +28,7 @@ import time
 from dataclasses import dataclass
 from joblib import Parallel, delayed
 from pathlib import Path
-from fitval.metrics import PerformanceData, all_metrics, metric_at_single_sens
+from fitval.metrics import PerformanceData, all_metrics, metric_at_single_sens, metric_at_fit_and_mod_threshold
 from fitval.models import get_model, create_spline_model
 from sklearn.experimental import enable_iterative_imputer 
 from sklearn.impute import IterativeImputer
@@ -74,6 +74,187 @@ PR_NOCI = 'pr.csv'
 DC_CI = 'dc.csv'
 
 
+def boot_reduction_in_referrals(data_path: Path,
+                 save_path: Path = None,
+                 model_names: list = None,
+                 thr_fit: list = [10],
+                 B: int = 500, 
+                 boot_method: str = 'percentile',
+                 random_state: int = 42,
+                 plot_boot: bool = True,
+                 return_boot_samples: bool = False,
+                 thr_mod_add: list = None,
+                 parallel: bool = False,
+                 nchunks: int = 10, 
+                 ):
+    """Compute performance metrics for predefined models on dataset (x, y), 
+    and obtain bootstrap confidence intervals for the metrics
+    """
+    tic = time.time()
+    
+    # Argument validation
+    if not isinstance(data_path, Path):
+        raise TypeError(f"Expected Path object for data_path, got {type(data_path)}")
+    if not data_path.exists():
+        raise FileNotFoundError(f"data_path does not exist: {data_path}")
+    
+    if save_path is not None:
+        if not isinstance(save_path, Path):
+            raise TypeError(f"Expected Path object for save_path, got {type(save_path)}")
+        if not save_path.exists():
+            raise FileNotFoundError(f"save_path does not exist: {save_path}")
+    
+    # Adjust number of chunks (only relevant if parallel = True)
+    if B < nchunks:
+        print("Number of bootstrap samples B is smaller than number of chunks, setting nchunks=B")
+        nchunks = B
+
+    # Read data
+    df = pd.read_csv(data_path)
+
+    # Validate data columns
+    target_cols = np.array(['y_true', 'fit_val'])
+    test = [c not in df.columns for c in target_cols]
+    if any(test):
+        raise ValueError("Column(s) " + str(target_cols[test].tolist()) + " need to be in input data")
+    
+    # Get column names where model predictions are stored
+    model_columns = [c for c in df.columns if c.startswith('y_pred')]
+    if not model_columns:
+        raise ValueError("Data must have at least one column name starting with 'y_pred'")
+    
+    # Get model names that correspond to model predictions
+    if model_names is None:
+        model_names = ['model_' + str(i) for i in range(len(model_columns))]
+    else:
+        if len(model_names) != len(model_columns):
+            raise ValueError(f"Data contains predictions for {len(model_columns)} models, but only {len(model_names)} model names are given.")
+    model_column_name_map = {c:n for c, n in zip(model_columns, model_names)}
+
+    # ---- 1. Compute metrics ----
+
+    # Result container
+    metrics = pd.DataFrame()
+
+    # ---- 1.1. Compute metrics on original data ----
+    print('Computing metrics on original data...')
+
+    # Get outcome labels and FIT test values
+    y_true = df.y_true.to_numpy().squeeze()
+    fit = df.fit_val.to_numpy().squeeze()
+
+    # Estimate sensitivity of FIT at each threshold in thr_fit
+    sens_fit_all = []
+    for t in thr_fit:
+        s = y_true[fit >= t].sum() / y_true.sum()
+        sens_fit_all.append(s)
+        print('... Estimated sensitivity for FIT >= {}: {}'.format(t, s))
+    
+    # For each model, find thresholds that yield sensitivities corresponding to FIT thresholds
+    thr_sens_fit = pd.DataFrame()
+    for i, model_column in enumerate(model_columns):
+        y_pred = df[model_column].to_numpy().squeeze()
+        for t, s in zip(thr_fit, sens_fit_all):
+            out = metric_at_single_sens(y_true, y_pred, target_sens=s)
+            p = pd.DataFrame({'model_name': model_column_name_map[model_column], 'thr_fit': t, 'sens_fit': s, 'thr_mod': out.thr.item()}, 
+                              index=[i])
+            thr_sens_fit = pd.concat(objs=[thr_sens_fit, p], axis=0)
+
+    # Add thresholds 
+    if save_path is not None:
+        thr_sens_fit.to_csv(save_path / 'fit_and_model_thresholds.csv', index=False)
+
+    # Compute metrics for each model, bootstrap sample, and imputed dataset combination
+    metrics = pd.DataFrame()
+
+    # Loop over models, then over imputed datasets
+    def _compute_metrics(df, b, print_msg=True):
+        metrics = pd.DataFrame()
+
+        for model_column in model_columns:
+            model_name = model_column_name_map[model_column]
+            if print_msg:
+                print(".. Computing metrics for model", model_name)
+            
+            # True labels and predicted probabilities for current model
+            y_pred = df[model_column].to_numpy().squeeze()
+
+            # Get thresholds yielding sensitivity of FIT >= 10
+            df_thr = thr_sens_fit.loc[(thr_sens_fit.model_name == model_name)]
+            thr_fit_use = df_thr.thr_fit.tolist()
+            thr_mod_use = df_thr.thr_mod.tolist()
+
+            # Add additional model thresholds, where model is to be compared against FIT at threshold 10
+            if thr_mod_add is not None:  
+                thr_fit_use += [10 for __ in range(len(thr_mod_add))]
+                thr_mod_use += thr_mod_add
+
+            # Compute metrics
+            m = metric_at_fit_and_mod_threshold(y_true, y_pred, fit, thr_fit=thr_fit_use, thr_mod=thr_mod_use, format_long=True)
+            m['model_name'] = model_name
+            m['b'] = b
+            metrics = pd.concat(objs=[metrics, m], axis=0)
+        return metrics
+    
+    m = _compute_metrics(df, b=-1, print_msg=True)
+    metrics = pd.concat(objs=[metrics, m], axis=0)
+
+    # If no bootstrap samples are requested, return metrics computed on original data without CI
+    if B == 0:
+        return metrics
+
+    # ---- 1.2. Compute metrics on bootstrapped data ----
+    print('\nComputing metrics on bootstrap samples of original data...')
+    if B > 0:
+
+        # Precompute a few quantities that are used in bootstrap sampling
+        rng = np.random.default_rng(seed=random_state)
+        nobs = len(y_true)  # Number of patients
+
+        def _boot_iter(i, print_msg=False):
+            if print_msg:
+                print("Processing bootstrap sample", i)
+            idx_boot = rng.choice(a=np.arange(nobs), size=nobs, replace=True)
+            df_boot = df.iloc[idx_boot]
+            m = _compute_metrics(df_boot, b=i, print_msg=False)
+            return m
+        
+        def _process_chunk(indices, print_msg=True):
+            result = []
+            for i in indices:
+                result_i = _boot_iter(i, print_msg=print_msg)
+                result.append(result_i)
+            return result
+        
+        if parallel:
+            chunks = np.array_split(np.arange(B), nchunks)
+            boot_results = Parallel(n_jobs=-1)(delayed(_process_chunk)(indices) for indices in chunks)
+            boot_results = [item for sublist in boot_results for item in sublist]
+        else:
+            boot_results = [0] * B
+            for i in tqdm(range(B)):
+                boot_results[i] = _boot_iter(i)
+        
+        # Merge metrics computed on bootstrap samples, then merge with original data
+        boot_samples = pd.concat(objs=boot_results, axis=0)        
+        metrics = pd.concat(objs=[metrics, boot_samples], axis=0)
+        
+    if return_boot_samples:
+        return boot_samples
+    
+    # Compute bootstrap confidence intervals
+    group_cols = [c for c in metrics.columns if c not in ['b', 'metric_value']]
+    metrics = _add_ci(metrics, group_cols, 'metric_value', method=boot_method)
+        
+    # Plot bootstrap distributions
+    if plot_boot and save_path is not None:
+        _plot_boot(boot_samples, save_path=save_path, out_name='plot_boot_thr_fit_mod.png')
+
+    toc = time.time()
+    print('Code ran in {:.2f} minutes.'.format((toc - tic) / 60))
+    return metrics
+
+
 def boot_metrics(data_path: Path,
                  save_path: Path = None,
                  data_has_predictions: bool = True,
@@ -81,7 +262,7 @@ def boot_metrics(data_path: Path,
                  recal: bool = True,
                  thr_risk: list = [0.005, 0.01, 0.02, 0.03, 0.04, 0.05, 0.1, 0.2], 
                  sens: list = [0.5, 0.8, 0.85, 0.9, 0.95, 0.99], 
-                 thr_fit: list = [2, 10],
+                 thr_fit: list = [10],
                  prob_min: float = 0.2,
                  B: int = 500, 
                  boot_method: str = 'percentile',
@@ -96,7 +277,8 @@ def boot_metrics(data_path: Path,
                  plot_boot: bool = True,
                  return_boot_samples: bool = False,
                  plot_fit_model: bool = True,
-                 thr_mod_add: list = None
+                 thr_mod_add: list = None,
+                 reduction_in_referrals_only: bool = False
                  ):
     """Compute performance metrics for predefined models on dataset (x, y), 
     and obtain bootstrap confidence intervals for the metrics
@@ -136,7 +318,9 @@ def boot_metrics(data_path: Path,
         return_boot_samples: if True, a dataclass containing bootstrap samples is returned
         plot_fit_model: if True, the fit-spline model is plotted
         thr_mod_add: additional model thresholds that need to be compared to FIT threshold 10, e.g. [0.006, 0.03]
-    
+        reduction_in_referrals_only: if True, only reduction in referrals relative to FIT test at thresholds thr_fit is computed.
+            Model thresholds are chosen such that they capture the same number of cancers as these FIT thresholds,
+            and additional mode thresholds to be compared to FIT at threshold 10 are taken from thr_mod_add argument.
     Returns
         if return_boot_samples is False:
             ci_data: PerformanceData class (see fitval/metrics.py) that contains metrics along with bootstrap confidence intervals.
@@ -324,9 +508,10 @@ def boot_metrics(data_path: Path,
 
     # Compute metrics for each model, bootstrap sample, and imputed dataset combination
     d = metrics_over_imputations(df_long, ymax, global_only=global_only, interp_step=interp_step, 
-                                 thr_risk=thr_risk, sens=sens,
+                                 thr_fit=thr_fit, thr_risk=thr_risk, sens=sens,
                                  rocpr=True, prob_min=prob_min, format_long=True, raw_rocpr=raw_rocpr,
-                                 thr_sens_fit=thr_sens_fit, thr_mod_add=thr_mod_add, b=-1)
+                                 thr_sens_fit=thr_sens_fit, thr_mod_add=thr_mod_add, b=-1,
+                                 reduction_in_referrals_only=reduction_in_referrals_only)
     data = _merge_data([data, d])
 
     # If no bootstrap samples are requested, return metrics computed on original data without CI
@@ -339,12 +524,12 @@ def boot_metrics(data_path: Path,
 
         # Precompute a few quantities that are used in bootstrap sampling
         y = df[['y_true']]
-        nobs = len(y)
-        nrep = int(df_long.shape[0] / nobs)
+        nobs = len(y)  # Number of patients
+        nrep = int(df_long.shape[0] / nobs)  # Number of models
         idx0 = np.where(y == 0)[0]
         idx1 = np.where(y == 1)[0]
-        nobs0 = len(idx0)
-        nobs1 = len(idx1)
+        nobs0 = len(idx0)  # Number of patients without outcome
+        nobs1 = len(idx1)  # Number of patients with outcome
         
         def _boot_iter(i, print_msg=False):
             """Runs a single iteration of bootstrap"""
@@ -366,8 +551,8 @@ def boot_metrics(data_path: Path,
             # Get predictions in long format
             if data_has_predictions: 
                 # If data already has predictions, we just want to index these in precomputed df_long for efficiency
-                idx_boot = np.concatenate([idx_boot + nobs * i for i in range(nrep)])
-                df_long_boot = df_long.iloc[idx_boot]
+                idx_boot_long = np.concatenate([idx_boot + nobs * i for i in range(nrep)])
+                df_long_boot = df_long.iloc[idx_boot_long]
             else:
                 df_boot = df.iloc[idx_boot, :]
                 y_boot, x_boot = df_boot[['y_true']], df_boot.drop(labels=['y_true'], axis=1)
@@ -379,10 +564,10 @@ def boot_metrics(data_path: Path,
 
             # Compute metrics for each model, bootstrap sample, and imputed dataset combination
             d = metrics_over_imputations(df_long_boot, ymax, global_only=global_only, interp_step=interp_step, 
-                                         thr_risk=thr_risk, sens=sens,
+                                         thr_fit=thr_fit, thr_risk=thr_risk, sens=sens,
                                          rocpr=True, prob_min=prob_min, format_long=True, raw_rocpr=raw_rocpr,
                                          thr_sens_fit=thr_sens_fit, print_msg=False, thr_mod_add=thr_mod_add,
-                                         b=i)
+                                         b=i, reduction_in_referrals_only=reduction_in_referrals_only)
 
             # Store roc and pr curve data only for first nroc samples to avoid large objects
             if i > n_noci:
@@ -570,7 +755,9 @@ def metrics_over_imputations(df: pd.DataFrame, ymax: pd.DataFrame,
                              dca: bool = True,
                              print_msg: bool = True,
                              thr_mod_add: list = None,
-                             b: int = -1):
+                             b: int = -1,
+                             reduction_in_referrals_only: bool = False,
+                             metrics_relative_to_fit: bool = True):
     """For each model in df, compute metrics on each imputed dataset,
     then take the average value of each metric over imputations.
     
@@ -600,22 +787,28 @@ def metrics_over_imputations(df: pd.DataFrame, ymax: pd.DataFrame,
     if not np.any(df.model_name == 'fit'):
         raise ValueError("df must contain data for FIT test, under model_name = 'fit'")
 
-    # Result container, boostrap sample indicator, FIT test values
-    # In predict.py, FIT test values are included once for original data and each bootstrap sample
+    # Result container
     data = PerformanceData()
-    #b = df.b.iloc[0]
+
+    # FIT test values
     fit = df.loc[df.model_name == 'fit', 'y_pred'].to_numpy().squeeze()
 
     # Loop over models, then over imputed datasets
     models = df.model_name.unique()
     for model_name in models:
+        if print_msg:
+            print(".. Computing metrics for model", model_name)
+        
+        # Adjust computation parameters depending on whether model is fit
         if model_name == 'fit':
             cal = False  # If model is 'fit' (FIT test values), calibration metrics cannot be computed
+            metrics_relative_to_fit = False  # If model is 'fit', do not compute metrics relative to FIT test
         else:
             cal = True
+            metrics_relative_to_fit = True
 
-        # Compute metrics for this model on all imputed datasets
-        model_data = PerformanceData()
+        # Compute metrics for this model over imputed datasets
+        model_data = PerformanceData()  # Stores metrics for the current model
         imputations = df.loc[df.model_name == model_name, 'm'].unique()
         for m in imputations:
 
@@ -638,23 +831,27 @@ def metrics_over_imputations(df: pd.DataFrame, ymax: pd.DataFrame,
                 thr_fit_use = dfthr.thr_fit.tolist()
                 thr_mod_use = dfthr.thr_mod.tolist()
 
-                ## Add additional model thresholds, where model is to be compared against FIT at threshold 10
+                # Add additional model thresholds, where model is to be compared against FIT at threshold 10
                 if thr_mod_add is not None:  
                     thr_fit_use += [10 for __ in range(len(thr_mod_add))]
                     thr_mod_use += thr_mod_add
-
-                #thr_risk = thr_risk + thr_mod_use  # Adds a bit too many values, esp if multiple FIT thrs and models.
-                #thr_risk = list(set(thr_risk))
             else:
                 thr_fit_use = thr_fit
                 thr_mod_use = None
 
             # Compute metrics
-            metrics = all_metrics(y_true, y_pred, fit, thr_fit=thr_fit_use, thr_risk=thr_risk, sens=sens,
-                                  interp_step=interp_step, ymax_bin=[prob_min, ym], ymax_lowess=[prob_min, ym], 
-                                  global_only=global_only, cal=cal, rocpr=rocpr,
-                                  wilson_ci=False, format_long=format_long, 
-                                  raw_rocpr=raw_rocpr, thr_mod=thr_mod_use, dca=dca, print_msg=print_msg)
+            if reduction_in_referrals_only: 
+                metrics = PerformanceData()
+                if model_name not in ['fit', 'fit-spline']:
+                    metrics.thr_fit_mod = metric_at_fit_and_mod_threshold(y_true, y_pred, fit, thr_fit=thr_fit_use, 
+                                                                        thr_mod=thr_mod_use, format_long=format_long)
+            else:
+                metrics = all_metrics(y_true, y_pred, fit, thr_fit=thr_fit_use, thr_risk=thr_risk, sens=sens,
+                                    interp_step=interp_step, ymax_bin=[prob_min, ym], ymax_lowess=[prob_min, ym], 
+                                    global_only=global_only, cal=cal, rocpr=rocpr,
+                                    wilson_ci=False, format_long=format_long, 
+                                    raw_rocpr=raw_rocpr, thr_mod=thr_mod_use, dca=dca, print_msg=print_msg,
+                                    metrics_relative_to_fit=metrics_relative_to_fit)
 
             metrics = _add_groupings(metrics, model_name=model_name, b=b, m=m)
 
@@ -666,8 +863,8 @@ def metrics_over_imputations(df: pd.DataFrame, ymax: pd.DataFrame,
             model_data = _average_over_imputations(model_data)
         data = _merge_data([data, model_data])
     
-    # For some metrics, performance of the FIT test is computed at each call to all_metrics
-    # Remove duplicate entries and tidy it a bit
+    # For decision curve data, performance of the FIT test is computed at each call to all_metrics
+    # Remove duplicate entries
     remove_duplicate_rows = True
     if remove_duplicate_rows:
         df = data.dc
@@ -721,9 +918,9 @@ def _average_over_imputations(data: PerformanceData):
     
     Assumes the data is in long format, so 'metric_value' column contains the values to average
     and the 'm' column contains the imputed dataset indicator to take the average over
-    and all other columns can be kept as index
-
-    NB average over imputations is not meaningful for some data items, such as non-interpolated ROC curve data.
+    and all other columns can be kept as index.
+    NB. Aerage over imputations is not meaningful for some data items, such as non-interpolated ROC curve data,
+    non-interpolated PR curve data, and binned calibration curve data (these are excluded in fields_exclude)
     """
 
     # Data items not meant to be averaged as averaging is not meaningful
