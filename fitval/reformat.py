@@ -1,18 +1,8 @@
 """Reformat output tables"""
-from fitval.boot import DISC_CI, CAL_CI, RISK_CI, SENS_CI, SENS_FIT_CI, DC_CI, SENS_FIT_2_CI, PR_GAIN_CI
+from constants import DISC_CI, CAL_CI, RISK_CI, SENS_CI, SENS_FIT_CI, DC_CI, SENS_FIT_2_CI, PR_GAIN_CI
+from constants import DISC_PAPER, CAL_PAPER, RISK_PAPER, SENS_PAPER, SENS_FIT_PAPER, SENS_FIT_PAPER2, DC_PAPER, SENS_GAIN_PAPER
 import pandas as pd
 from pathlib import Path
-
-
-# Reformatted discrimination, calibration, net benefit tables
-DISC_PAPER = 'reformat_discrimination.csv'
-CAL_PAPER = 'reformat_calibration.csv'
-RISK_PAPER = 'reformat_metrics_at_risk.csv'
-SENS_PAPER = 'reformat_metrics_at_sens.csv'
-SENS_FIT_PAPER = 'reformat_metrics_at_sens_fit.csv'
-SENS_FIT_PAPER2 = 'reformat_metrics_at_fit_and_mod_thresholds.csv'
-DC_PAPER = 'reformat_dca.csv'
-SENS_GAIN_PAPER = 'reformat_pr_gain.csv'
 
 
 # Metric names
@@ -210,36 +200,10 @@ def reformat_disc_cal(data_path: Path, save_path: Path, model_labels: dict = Non
         df = pd.read_csv(data_path / in_file)
         check_nan(df)  ## It's OK for max_sens to be nan here, it is not relevant anyway, as not computed for FIT at thr 2/10 etc
 
-        # Rescale to %
-        mask = df.metric_name.isin(['sens_fit', 'spec_fit', 'ppv_fit', 'npv_fit',
-                                    'sens_mod', 'spec_mod', 'ppv_mod', 'npv_mod'])
-        df.loc[mask, ['metric_value', 'ci_low', 'ci_high']] *= 100   
-        df.loc[(df.model_name != 'fit') & (df.metric_name.isin(['thr_mod'])), ['metric_value', 'ci_low', 'ci_high']] *= 100
-        if 'thr_mod' in df.columns:
-            df.thr_mod = df.thr_mod * 100
+        # Reformat
+        df = _reformat_metrics_at_thr_fit_mod(df, model_labels, model_order)
 
-        # To wide format
-        df = _reformat_ci(df, digits=2)
-        if 'thr_mod' in df.columns:
-            df = df.pivot(index=['thr_fit', 'thr_mod', 'model_name'], columns='metric_name', values='metric_value').reset_index()
-        else:
-            df = df.pivot(index=['thr_fit', 'model_name'], columns='metric_name', values='metric_value').reset_index()
-        cols = ['thr_fit', 'thr_mod', 'model_name', 'pp_mod', 'pp_fit', 'proportion_reduction_tests',
-                'sens_mod', 'sens_fit', 'delta_sens', 'tp_mod', 'tp_fit', 'delta_tp',
-                'ppv_mod', 'ppv_fit', 'delta_ppv', 'pp_per_cancer_mod', 'pp_per_cancer_fit',
-                'pp1000_mod', 'pp1000_fit', 'tp1000_mod', 'tp1000_fit'
-                ]
-        cols_use = [c for c in cols if c in df.columns]
-        df = df[cols_use]
-
-        # Reorder
-        thr = df.thr_fit.unique()
-        df = pd.concat(objs=[df.loc[(df.thr_fit == t) & (df.model_name == m)] for t in thr for m in model_order if m in df.model_name.unique()], axis=0)
-
-        # Tidy model name and column names
-        df = df.rename(columns=metric_names)
-        if model_labels is not None:
-            df.model_name = df.model_name.replace(model_labels)
+        # Save
         df.to_csv(save_path / out_file, index=False)
     #endregion
 
@@ -373,4 +337,40 @@ def reformat_disc_cal(data_path: Path, save_path: Path, model_labels: dict = Non
     #endregion
 
     print('Reformat complete.')
+
+
+def _reformat_metrics_at_thr_fit_mod(df, model_labels, model_order):
+        
+    # Rescale to %
+    mask = df.metric_name.isin(['sens_fit', 'spec_fit', 'ppv_fit', 'npv_fit',
+                                'sens_mod', 'spec_mod', 'ppv_mod', 'npv_mod'])
+    df.loc[mask, ['metric_value', 'ci_low', 'ci_high']] *= 100   
+    df.loc[(df.model_name != 'fit') & (df.metric_name.isin(['thr_mod'])), ['metric_value', 'ci_low', 'ci_high']] *= 100
+    if 'thr_mod' in df.columns:
+        df.thr_mod = df.thr_mod * 100
+
+    # To wide format
+    df = _reformat_ci(df, digits=2)
+    if 'thr_mod' in df.columns:
+        df = df.pivot(index=['thr_fit', 'thr_mod', 'model_name'], columns='metric_name', values='metric_value').reset_index()
+    else:
+        df = df.pivot(index=['thr_fit', 'model_name'], columns='metric_name', values='metric_value').reset_index()
+    cols = ['thr_fit', 'thr_mod', 'model_name', 'pp_mod', 'pp_fit', 'proportion_reduction_tests',
+            'sens_mod', 'sens_fit', 'delta_sens', 'tp_mod', 'tp_fit', 'delta_tp',
+            'ppv_mod', 'ppv_fit', 'delta_ppv', 'pp_per_cancer_mod', 'pp_per_cancer_fit',
+            'pp1000_mod', 'pp1000_fit', 'tp1000_mod', 'tp1000_fit'
+            ]
+    cols_use = [c for c in cols if c in df.columns]
+    df = df[cols_use]
+
+    # Reorder
+    if model_order is not None:
+        thr = df.thr_fit.unique()
+        df = pd.concat(objs=[df.loc[(df.thr_fit == t) & (df.model_name == m)] for t in thr for m in model_order if m in df.model_name.unique()], axis=0)
+
+    # Tidy model name and column names
+    df = df.rename(columns=metric_names)
+    if model_labels is not None:
+        df.model_name = df.model_name.replace(model_labels)
     
+    return df

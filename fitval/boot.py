@@ -30,6 +30,9 @@ from joblib import Parallel, delayed
 from pathlib import Path
 from fitval.metrics import PerformanceData, all_metrics, metric_at_single_sens, metric_at_fit_and_mod_threshold
 from fitval.models import get_model, create_spline_model
+from fitval.reformat import _reformat_metrics_at_thr_fit_mod
+from constants import DISC_CI, CAL_CI, CAL_SMOOTH_CI, CAL_BIN_NOCI, RISK_CI, SENS_CI, SENS_FIT_CI, SENS_FIT_2_CI
+from constants import ROC_CI, ROC_NOCI, PR_CI, PR_GAIN_CI, PR_NOCI, DC_CI
 from sklearn.experimental import enable_iterative_imputer 
 from sklearn.impute import IterativeImputer
 from sklearn.linear_model import BayesianRidge, LogisticRegression
@@ -43,37 +46,6 @@ from tqdm import tqdm
 warnings.simplefilter(action='ignore')  # Suppress all warnings for smoother output (not ideal)
 
 
-# Output files for metrics (CI: bootstrap CI is computed; NOCI: no bootstrap CI is computed)
-
-## Overall discrimination and calibration metrics
-DISC_CI = 'discrimination.csv'
-CAL_CI = 'calibration.csv'
-
-## Calibration curves
-CAL_SMOOTH_CI = 'calibration_curve_smooth.csv'
-CAL_BIN_NOCI = 'calibration_curve_binned.csv'
-
-## Metrics at risk score thresholds, and sensitivities
-RISK_CI = 'metrics_at_risk.csv'
-SENS_CI = 'metrics_at_sens.csv'
-
-## Metrics at ...
-SENS_FIT_CI = 'metrics_at_sens_fit.csv'
-SENS_FIT_2_CI = 'metrics_at_fit_and_mod_thresholds.csv'
-
-## ROC curve data
-ROC_CI = 'roc_interp.csv'
-ROC_NOCI = 'roc.csv'
-
-## PR curve data
-PR_CI = 'pr_interp.csv'
-PR_GAIN_CI = 'pr_gain.csv'
-PR_NOCI = 'pr.csv'
-
-## Decision curve data
-DC_CI = 'dc.csv'
-
-
 def boot_reduction_in_referrals(data_path: Path,
                  save_path: Path = None,
                  model_names: list = None,
@@ -83,9 +55,7 @@ def boot_reduction_in_referrals(data_path: Path,
                  random_state: int = 42,
                  plot_boot: bool = True,
                  return_boot_samples: bool = False,
-                 thr_mod_add: list = None,
-                 parallel: bool = False,
-                 nchunks: int = 10, 
+                 thr_mod_add: list = None
                  ):
     """Compute performance metrics for predefined models on dataset (x, y), 
     and obtain bootstrap confidence intervals for the metrics
@@ -104,11 +74,6 @@ def boot_reduction_in_referrals(data_path: Path,
         if not save_path.exists():
             raise FileNotFoundError(f"save_path does not exist: {save_path}")
     
-    # Adjust number of chunks (only relevant if parallel = True)
-    if B < nchunks:
-        print("Number of bootstrap samples B is smaller than number of chunks, setting nchunks=B")
-        nchunks = B
-
     # Read data
     df = pd.read_csv(data_path)
 
@@ -139,16 +104,14 @@ def boot_reduction_in_referrals(data_path: Path,
     # ---- 1.1. Compute metrics on original data ----
     print('Computing metrics on original data...')
 
-    # Get outcome labels and FIT test values
+    # Estimate sensitivity of FIT at each threshold in thr_fit
     y_true = df.y_true.to_numpy().squeeze()
     fit = df.fit_val.to_numpy().squeeze()
-
-    # Estimate sensitivity of FIT at each threshold in thr_fit
     sens_fit_all = []
     for t in thr_fit:
         s = y_true[fit >= t].sum() / y_true.sum()
         sens_fit_all.append(s)
-        print('... Estimated sensitivity for FIT >= {}: {}'.format(t, s))
+        print('.. Estimated sensitivity for FIT >= {}: {}'.format(t, s))
     
     # For each model, find thresholds that yield sensitivities corresponding to FIT thresholds
     thr_sens_fit = pd.DataFrame()
@@ -156,7 +119,9 @@ def boot_reduction_in_referrals(data_path: Path,
         y_pred = df[model_column].to_numpy().squeeze()
         for t, s in zip(thr_fit, sens_fit_all):
             out = metric_at_single_sens(y_true, y_pred, target_sens=s)
-            p = pd.DataFrame({'model_name': model_column_name_map[model_column], 'thr_fit': t, 'sens_fit': s, 'thr_mod': out.thr.item()}, 
+            p = pd.DataFrame({'model_name': model_column_name_map[model_column], 
+                              'thr_fit': t, 'sens_fit': s, 
+                              'thr_mod': out.thr.item(), 'sens_mod': out.sens.item()}, 
                               index=[i])
             thr_sens_fit = pd.concat(objs=[thr_sens_fit, p], axis=0)
 
@@ -169,8 +134,10 @@ def boot_reduction_in_referrals(data_path: Path,
 
     # Loop over models, then over imputed datasets
     def _compute_metrics(df, b, print_msg=True):
-        metrics = pd.DataFrame()
+        y_true = df.y_true.to_numpy().squeeze()
+        fit = df.fit_val.to_numpy().squeeze()
 
+        metrics = pd.DataFrame()
         for model_column in model_columns:
             model_name = model_column_name_map[model_column]
             if print_msg:
@@ -219,21 +186,9 @@ def boot_reduction_in_referrals(data_path: Path,
             m = _compute_metrics(df_boot, b=i, print_msg=False)
             return m
         
-        def _process_chunk(indices, print_msg=True):
-            result = []
-            for i in indices:
-                result_i = _boot_iter(i, print_msg=print_msg)
-                result.append(result_i)
-            return result
-        
-        if parallel:
-            chunks = np.array_split(np.arange(B), nchunks)
-            boot_results = Parallel(n_jobs=-1)(delayed(_process_chunk)(indices) for indices in chunks)
-            boot_results = [item for sublist in boot_results for item in sublist]
-        else:
-            boot_results = [0] * B
-            for i in tqdm(range(B)):
-                boot_results[i] = _boot_iter(i)
+        boot_results = [0] * B
+        for i in tqdm(range(B)):
+            boot_results[i] = _boot_iter(i)
         
         # Merge metrics computed on bootstrap samples, then merge with original data
         boot_samples = pd.concat(objs=boot_results, axis=0)        
@@ -243,16 +198,29 @@ def boot_reduction_in_referrals(data_path: Path,
         return boot_samples
     
     # Compute bootstrap confidence intervals
+    print('.. Computing bootstrap confidence intervals')
     group_cols = [c for c in metrics.columns if c not in ['b', 'metric_value']]
     metrics = _add_ci(metrics, group_cols, 'metric_value', method=boot_method)
         
+    # Reformat data
+    metrics_reformat = _reformat_metrics_at_thr_fit_mod(metrics.copy(), None, None)
+
+    # Save
+    print('.. Saving computed metrics')
+    metrics.to_csv(save_path / SENS_FIT_2_CI, index=False)
+    metrics_reformat.to_csv(save_path / ('reformat_' + SENS_FIT_2_CI), index=False)
+
     # Plot bootstrap distributions
     if plot_boot and save_path is not None:
-        _plot_boot(boot_samples, save_path=save_path, out_name='plot_boot_thr_fit_mod.png')
+        print('.. Plotting bootstrap distributions')
+        try:
+            _plot_boot(boot_samples, save_path=save_path, out_name='plot_boot_thr_fit_mod.png', sample=False)
+        except Exception as ex:
+            print("_plot_boot did not complete, exception: ", ex)
 
     toc = time.time()
     print('Code ran in {:.2f} minutes.'.format((toc - tic) / 60))
-    return metrics
+    return metrics, metrics_reformat
 
 
 def boot_metrics(data_path: Path,
@@ -497,7 +465,8 @@ def boot_metrics(data_path: Path,
                 out = metric_at_single_sens(y_true=dfsub.y_true.to_numpy().squeeze(), 
                                             y_pred=dfsub.y_pred.to_numpy().squeeze(), 
                                             target_sens=s)
-                p = pd.DataFrame({'model_name': model_name, 'm': m, 'thr_fit': t, 'sens_fit': s, 'thr_mod': out.thr.item()}, 
+                p = pd.DataFrame({'model_name': model_name, 'm': m, 'thr_fit': t, 'sens_fit': s, 
+                                  'thr_mod': out.thr.item(), 'sens_mod': out.sens.item()}, 
                                   index=[0])
                 thr_sens_fit = pd.concat(objs=[thr_sens_fit, p], axis=0)
     thr_sens_fit = thr_sens_fit.reset_index(drop=True)
@@ -1158,7 +1127,7 @@ def recalibrate_predictions(df: pd.DataFrame, cal: dict):
 
 
 # ~ Helpers: plot Bootstrap distributions ~
-def _plot_boot(df, save_path, out_name):
+def _plot_boot(df, save_path, out_name, sample=True):
 
     # Columns that contain model name, metric name and metric value
     model_name_col = 'model_name'
@@ -1173,7 +1142,7 @@ def _plot_boot(df, save_path, out_name):
     index_cols = [c for c in df.columns if c not in non_index_cols]
     if index_cols:
         groups = df[index_cols + [model_name_col]].drop_duplicates().reset_index(drop=True)
-        if len(groups) > 10:
+        if sample and len(groups) > 10:
             #groups = groups.groupby(model_name_col).sample(1, random_state=42).reset_index(drop=True)
             groups = groups.sample(10, random_state=42).reset_index(drop=True)
     else:

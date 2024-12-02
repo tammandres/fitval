@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from pathlib import Path
-from fitval.boot import CAL_SMOOTH_CI, CAL_BIN_NOCI, ROC_NOCI, PR_NOCI, ROC_CI, PR_CI, PR_GAIN_CI, SENS_FIT_CI, DC_CI
+from fitval.boot import CAL_SMOOTH_CI, CAL_BIN_NOCI, ROC_NOCI, PR_NOCI, ROC_CI, PR_CI, PR_GAIN_CI, SENS_FIT_CI, DC_CI, SENS_FIT_2_CI
 
 
 # Output files
@@ -15,7 +15,7 @@ PLOT_DCA = 'plot_dca'  # .png and attributes added later depending on plot setti
 
 
 def get_default_colors(models):
-    colors = ['C1', 'C2', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9']
+    colors = ['C0', 'C1', 'C2', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9']
     model_colors = {model: colors[i % len(colors)] for i, model in enumerate(models)}
     model_colors['fit'] = 'red'
     model_colors['fit-spline'] = 'red'
@@ -717,3 +717,65 @@ def _plot_dca(df, col, lab, models, ax, ci, model_colors, model_labels, title):
     ax.set_xticks(xticks)
     ax.grid(which='major', zorder=1, alpha=0.5)
 
+
+# ~ Reduction in referrals ~
+def plot_reduction(run_path: Path, model_labels: dict = None, model_colors: dict = None, models_incl: list = None):
+
+    # Load data
+    df = pd.read_csv(run_path / SENS_FIT_2_CI)
+
+    # x-axis label
+    df['xlabel'] = "thr FIT: " + df.thr_fit.astype(str) + "\nthr mod: " + (df.thr_mod * 100).round(4).astype(str)
+    df['add_low'] = df.ci_low - df.metric_value
+    df['add_high'] = df.ci_high - df.metric_value
+
+    # Quantities to plot, and transform to percentage scale
+    red = df.loc[df.metric_name == 'proportion_reduction_tests']
+    sens = df.loc[df.metric_name == 'delta_sens']
+
+    red[['metric_value', 'add_low', 'add_high']] *= 100
+    sens[['metric_value', 'add_low', 'add_high']] *= 100
+
+    # Model names, colors, labels
+    if models_incl is not None:
+        models = models_incl
+        models = [mod for mod in models if mod in df.model_name.unique()]
+    else:
+        models = df.model_name.unique()
+    
+    if model_colors is None:
+        model_colors = get_default_colors(models)
+    if model_labels is None:
+        model_labels = {model:model for model in models}
+    
+    # Plot
+    ncol = len(models)
+    fig, ax = plt.subplots(2, ncol, figsize=(5 * ncol, 8), constrained_layout=True)
+    if ncol == 1:
+        ax = [ax]
+
+    for i, model in enumerate(models):
+        r = red.loc[red.model_name==model]
+        r['xcoord'] = np.arange(r.shape[0])
+        ered = r[['add_low', 'add_high']].transpose().abs().to_numpy()
+        
+        s = sens.loc[sens.model_name==model]
+        s['xcoord'] = np.arange(r.shape[0])
+        esens = s[['add_low', 'add_high']].transpose().abs().to_numpy()
+        
+        ax[0, i].errorbar(r.xcoord, r.metric_value, ered, fmt='.', markersize=18, color=model_colors[model])
+        ax[0, i].set(title='Reduction in referrals, model: ' + model_labels[model],
+                     ylabel='Percent reduction in number of positive tests\nrelative to FIT (negative is better)')
+        ax[0, i].hlines(y=0, xmin=0, xmax=s.xcoord.max(), linestyle='dashed', color='red', alpha=0.8)
+        ax[0, i].set_xticks(r.xcoord)
+        ax[0, i].set_xticklabels(r.xlabel)
+
+        ax[1, i].errorbar(s.xcoord, s.metric_value, esens, fmt='.', markersize=18, color=model_colors[model])
+        ax[1, i].set(title='Delta sensitivity, model: ' + model_labels[model],
+                     ylabel='Percent cancers missed relative to FIT\n(negative is worse)')
+        ax[1, i].hlines(y=0, xmin=0, xmax=s.xcoord.max(), linestyle='dashed', color='red', alpha=0.8)
+        ax[1, i].set_xticks(s.xcoord)
+        ax[1, i].set_xticklabels(s.xlabel)
+    
+    plt.savefig(run_path / 'plot_reduction_referrals.png', dpi=300, facecolor='white',  bbox_inches='tight')
+    plt.close()
