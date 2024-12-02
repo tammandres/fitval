@@ -60,7 +60,7 @@ def all_metrics(y_true: np.ndarray, y_pred: np.ndarray, fit: np.ndarray = None,
                 global_only: bool = False, cal: bool = True, rocpr: bool = True,
                 wilson_ci: bool = False, format_long: bool = False,
                 raw_rocpr: bool = False, thr_mod: list = None, dca: bool = True,
-                print_msg: bool = True):
+                print_msg: bool = True, metrics_relative_to_fit: bool = True):
     """Get performance metrics for a single set of outcome labels and predictions
 
     Args
@@ -86,6 +86,7 @@ def all_metrics(y_true: np.ndarray, y_pred: np.ndarray, fit: np.ndarray = None,
                        For example, one could compute thresholds for the model that yield same sensitivities as FIT >= 2, 10 , 100
                        and then include these.
         dca          : if True, decision curve data are included in output
+        metrics_relative_to_fit : compute diagnostic metrics relative to FIT test, such as proportion reduction in referrals
     
     Returns
         performance metrics in PerformanceData dataclass (see PerformanceData above)
@@ -148,48 +149,56 @@ def all_metrics(y_true: np.ndarray, y_pred: np.ndarray, fit: np.ndarray = None,
         perf.roc = pd.DataFrame()
         perf.pr = pd.DataFrame()
 
-    # GEt difference in PPVs (delta precision) and proportion reduction in tests 
-    # for the model compared to the FIT test at each level of sensitivity
-    if rocpr and fit is not None:
-        if print_msg:
-            print('... Computing delta PPV and proportion reduction in tests')
-        if format_long:
-            pr_int = perf.pr_int
-            pr_int = pd.pivot(pr_int, index='recall', columns='metric_name', values='metric_value').reset_index()
-        else:
-            pr_int = perf.pr_int
-        pr_int = pr_int[['recall', 'precision']]
-        perf.pr_gain = pr_gain(y_true, y_pred, fit, step=interp_step, sens_add=sens, format_long=True, pr_mod=pr_int)
-
-    # Metrics at sensitivities corresponding to FIT thresholds in thr_fit
-    #  For example, if thr_fit = [2, 10, 100],
-    #  the code finds thresholds for the model that yield sensitivities of FIT >=2 , FIT >= 10 and FIT >= 100
-    #  and then computes performance metrics at these thresholds.
-    #  NB. If this function is applied to bootstrap samples, 
-    #      each bootstrap sample may have a different model threshold.
-    #  To simulate the use of a single threshold over bootstrap samples,
-    #  the threshold can be precomputed on the original sample,
-    #  and evaluated using the metric_at_fit_and_mod_threshold function below.
-    if fit is not None:
-        thr_fit_apply = list(set(thr_fit))  # use only unique FIT threhsold values
-        if print_msg:
-            print("... Computing metrics at sensitivities corresponding to FIT thresholds", thr_fit_apply)
-        perf.thr_sens_fit = metric_at_fit_sens(y_true, y_pred, fit, thr_fit=thr_fit_apply, format_long=format_long)
-    
-    # Metrics at FIT thresholds thr_fit and corresponding model thresholds thr_mod
-    #   For example, if thr_fit = [2, 10, 100] and thr_mod = [0.01, 0.02, 0.03]
-    #   then ...
-    if fit is not None and thr_mod is not None:
-        # here, thr_fit may have repeated values, so that same fit thr can be compared against multiple mod thresholds in thr_mod
-        if print_msg:
-            print("... Computing metrics at FIT thresholds", thr_fit, "and corresponding model thresholds", thr_mod)
-        perf.thr_fit_mod = metric_at_fit_and_mod_threshold(y_true, y_pred, fit, thr_fit=thr_fit, thr_mod=thr_mod, format_long=format_long)
-
     # Metrics at predefined levels of sensitivity (e.g. 0.8, 0.9, 0.95)
     if print_msg:
         print("... Computing metrics at sensitivities:", sens)
     thr_sens = metric_at_sens(y_true, y_pred, sens, format_long=format_long, clf_curve=clf_curve)
     perf.thr_sens = thr_sens
+
+    # Compute metrics relative to FIT test
+    if fit is not None and metrics_relative_to_fit:
+
+        # Get difference in PPVs (delta precision) and proportion reduction in tests 
+        # for the model compared to the FIT test at each level of sensitivity
+        if rocpr:
+            if print_msg:
+                print('... Computing delta PPV and proportion reduction in tests at each sensitivity in PR-curve')
+            if format_long:
+                pr_int = perf.pr_int
+                pr_int = pd.pivot(pr_int, index='recall', columns='metric_name', values='metric_value').reset_index()
+            else:
+                pr_int = perf.pr_int
+            pr_int = pr_int[['recall', 'precision']]
+            perf.pr_gain = pr_gain(y_true, y_pred, fit, step=interp_step, sens_add=sens, format_long=True, pr_mod=pr_int)
+
+        # First, compute diagnostic metrics at sensitivities corresponding to FIT thresholds in thr_fit, using the metric_at_fit_sens function.
+        #   Aim is to compute metrics at a threshold where it captures the same number of cancers as FIT at thresholds thr_fit. 
+        #   Even if it is not possible to find a model threshold that captures the same number of cancers,
+        #   the precision-recall curve is interpolated to find a PPV at the same sensitivity as FIT,
+        #   and diagnostic metrics are derived from that. 
+        # NB. If this function is applied over bootstrap samples,
+        #   it is similar to finding a new model threshold in each bootstrap sample that captures the same number of cancers as FIT,
+        #   and so the conidence intervals for quantities like reduction in referrals relative to FIT can be very wide.
+        #   For CIs, it can be better to use the metric_at_fit_and_mod_threshold function below, 
+        #   where the model is applied always at the same threshold in each bootstrap sample.
+        #   This is closer to real-world usage, as in the real world the model would be applied at a single threshold to new data.
+        #   However, depending on the dataset, it may not be possible to find a threshold that exactly captures the same number of
+        #   cancers as FIT, and hence the function metric_at_fit_sens can still be useful.
+        thr_fit_apply = list(set(thr_fit))  # use only unique FIT threhsold values
+        if print_msg:
+            print("... Computing metrics at sensitivities corresponding to FIT threshold(s)", thr_fit_apply)
+        perf.thr_sens_fit = metric_at_fit_sens(y_true, y_pred, fit, thr_fit=thr_fit_apply, format_long=format_long)
+    
+        # Metrics at FIT thresholds thr_fit and corresponding model thresholds thr_mod
+        # The thresholds in thr_mod can be chosen such that the model captures the same number of cancers as FIT at thresholds thr_fit
+        # and in that case, the model is always applied at that threshold over bootstrap samples.
+        # This should usually be better for estimating bootstrap confidence intervals reduction in referrals for the model relative to FIT,
+        # as similar to real-world usage, the model would always be applied at the same threshold over bootstrap sammpels.
+        if thr_mod is not None:
+            # here, thr_fit may have repeated values, so that same fit thr can be compared against multiple mod thresholds in thr_mod
+            if print_msg:
+                print("... Computing metrics at FIT threshold(s)", thr_fit, "and corresponding model threshold(s)", thr_mod)
+            perf.thr_fit_mod = metric_at_fit_and_mod_threshold(y_true, y_pred, fit, thr_fit=thr_fit, thr_mod=thr_mod, format_long=format_long)
 
     # Additional metrics requiring probabilities
     if cal:
