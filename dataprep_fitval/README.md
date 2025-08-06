@@ -13,7 +13,6 @@ conda activate fit-dataprep
 pip install -r requirements.txt
 ```
 
-
 ## Run 
 
 Run the scripts in this order

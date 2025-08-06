@@ -9,6 +9,7 @@ The repository serves two goals:
 
 (2) To facilitate the evaluation of FIT-test based prediction models in the future. The current release contains a few improvements to the code, and examples of how this repository can be used to evaluate a prediction model on a new dataset.
 
+The code is currently published using the CC BY-NC license (which allows sharing and adapting but not commercial use - https://creativecommons.org/licenses/by-nc/4.0). This is because the repository also contains an implementation of the COLOFIT risk prediction model.
 
 
 ## Installation
