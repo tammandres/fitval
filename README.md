@@ -11,10 +11,23 @@ The repository serves two goals:
 
 
 
+## Installation
+
+Install Python packages under requirements:
+
+```
+conda create -n fitval python=3.9
+conda activate fitval
+cd <path-to-code-dir>  # e.g. cd C:\\Users\\2lnM\\Desktop\\project_fitml\\fitval
+pip install -r requirements.txt
+pip install -e .
+```
+
+
 ## Overview of files 
 
 
-At a glance: 
+**At a glance**: 
 
 `./dataprep_fitval` : contains functions that were used to prepare the hospital data for analysis (e.g. to clean the blood test values and extract the blood test value closest to the first FIT test), and to summarise changes in the patient population over time (e.g. to plot the proportion of patients with a positive FIT test over time). NB - these scripts were originally used as a separate code repository. The `./dataprep_fitval` directory thus includes its own requirements.txt file and installation instructions in README.md.
 
@@ -25,7 +38,7 @@ At a glance:
 `./tests` : contains scripts that were used to check that the functions are performing as expected;
 
 
-In detail:
+**In detail**:
 
 `./fitval/R/check-cal-in-r.R` : checks that calibration metrics computed by the current python pipeline are the same as those returned by different calibration packages in R.
 
@@ -88,14 +101,3 @@ In detail:
 `./runs/README_runs.md` : additionally describes the scripts in the order of which they were run
 
 
-## Installation
-
-Install Python packages under requirements:
-
-```
-conda create -n fitval python=3.9
-conda activate fitval
-cd <path-to-code-dir>  # e.g. cd C:\\Users\\2lnM\\Desktop\\project_fitml\\fitval
-pip install -r requirements.txt
-pip install -e .
-```
