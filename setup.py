@@ -8,9 +8,9 @@ with open("requirements.txt", "r") as f:
 
 setup(
     name="fitval",
-    version="0.0.2",
+    version="0.0.1",
     author="Andres Tamm",
-    description="Validation cancer risk prediction models that incorporate the faecal immunochemical test (FIT)",
+    description="External validation of prediction models involving the FIT test",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/tammandres/fitval",

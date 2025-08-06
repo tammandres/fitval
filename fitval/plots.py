@@ -2,8 +2,12 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import seaborn as sns
+from fitval.models import model_labels, model_colors
 from pathlib import Path
-from fitval.boot import CAL_SMOOTH_CI, CAL_BIN_NOCI, ROC_NOCI, PR_NOCI, ROC_CI, PR_CI, PR_GAIN_CI, SENS_FIT_CI, DC_CI, SENS_FIT_2_CI
+from fitval.boot import CAL_SMOOTH_CI, CAL_BIN_NOCI, ROC_NOCI, PR_NOCI, ROC_CI, PR_CI, PR_GAIN_CI, SENS_FIT_CI, DC_CI
+from matplotlib.ticker import MaxNLocator
+import string
 
 
 # Output files
@@ -14,17 +18,9 @@ ROCPR_INTERP_PLOT = 'plot_rocpr_interp'  # .png and attributes added later depen
 PLOT_DCA = 'plot_dca'  # .png and attributes added later depending on plot settings
 
 
-def get_default_colors(models):
-    colors = ['C0', 'C1', 'C2', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9']
-    model_colors = {model: colors[i % len(colors)] for i, model in enumerate(models)}
-    model_colors['fit'] = 'red'
-    model_colors['fit-spline'] = 'red'
-    return model_colors
-
-
 # ~ Calibration curves ~
-def plot_cal_bin(run_path: Path, model_labels: dict = None,
-                 model_colors: dict = None, figsize: tuple = (6, 5), 
+def plot_cal_bin(run_path: Path, model_labels: dict = model_labels,
+                 model_colors: dict = model_colors, figsize: tuple = (6, 5), 
                  boot_alpha: float = 0.1, exclude_boot: bool = False, grid: bool = False,
                  models_incl: list = None, suf: str = ''):
     """Plot binned calibration curves
@@ -41,31 +37,21 @@ def plot_cal_bin(run_path: Path, model_labels: dict = None,
     """
     print('\nPlotting binned calibration curves...')
 
-    # Read data
     df = pd.read_csv(run_path / CAL_BIN_NOCI)
     if 'metric_name' in df.columns:
         name = 'prob_true'
         df = df.loc[df.metric_name == name].rename(columns={'metric_value': name})
 
-    # Model names
     if models_incl is not None:
-        models = [mod for mod in models_incl if mod in df.model_name.unique()]
+        models = models_incl
+        #df = df.loc[df.model_name.isin(models_incl)]
+        models = [mod for mod in models if mod in df.model_name.unique()]
     else:
         models = df.model_name.unique()  # Models to be plotted
-    
-    # Model colors and labels
-    if model_colors is None:
-        model_colors = get_default_colors(models)
-    if model_labels is None:
-        model_labels = {model:model for model in models}
 
     # Do not plot bootstrap samples
     if exclude_boot:
         df = df.loc[df['b'] == -1]
-    
-    # For compatibility with older code
-    if 'fit_ub' not in df.columns:
-        df['fit_ub'] = 'none'
 
     # Groups: one plot per group
     df.loc[df.ymax > 0.2, 'ymax'] = 1  # For file names and grouping only
@@ -166,8 +152,8 @@ def plot_cal_bin(run_path: Path, model_labels: dict = None,
         plt.close()
 
 
-def plot_cal_smooth(run_path: Path, model_labels: dict = None, 
-                    model_colors: dict = None, figsize: tuple = (6, 5), grid: bool = False,
+def plot_cal_smooth(run_path: Path, model_labels: dict = model_labels, 
+                    model_colors: dict = model_colors, figsize: tuple = (6, 5), grid: bool = False,
                     models_incl: list = None, suf: str = ''):
     """Plot smooth calibration curves"""
     print('\nPlotting smooth calibration curves...')
@@ -176,8 +162,6 @@ def plot_cal_smooth(run_path: Path, model_labels: dict = None,
     if 'metric_name' in df.columns:
         name = 'prob_true'
         df = df.loc[df.metric_name == name].rename(columns={'metric_value': name})
-    if 'fit_ub' not in df.columns:
-        df['fit_ub'] = 'none'
 
     if models_incl is not None:
         models = models_incl
@@ -185,10 +169,6 @@ def plot_cal_smooth(run_path: Path, model_labels: dict = None,
         models = [mod for mod in models if mod in df.model_name.unique()]
     else:
         models = df.model_name.unique()
-    if model_colors is None:
-        model_colors = get_default_colors(models)
-    if model_labels is None:
-        model_labels = {model:model for model in models}
 
     # Spline curves don't have frac, and lowess curves don't have knots 
     # just in case fill in missing values to identify groups correctly
@@ -260,8 +240,8 @@ def plot_cal_smooth(run_path: Path, model_labels: dict = None,
 
 
 # ~ Discrimination curves ~
-def plot_rocpr(run_path: Path, model_labels: dict = None,
-               model_colors: dict = None, figsize: tuple = (12, 6), hspace: float = 0.3,
+def plot_rocpr(run_path: Path, model_labels: dict = model_labels,
+               model_colors: dict = model_colors, figsize: tuple = (12, 6), hspace: float = 0.3,
                exclude_boot: bool = True, boot_alpha: float = 0.1, boot_color: str = None, grid: bool = False,
                models_incl: list = None, suf: str = ''):
     """Plot ROC and precision-recall curves
@@ -283,11 +263,6 @@ def plot_rocpr(run_path: Path, model_labels: dict = None,
         models = [mod for mod in models if mod in pr.model_name.unique()]
     else:
         models = roc.model_name.unique()
-    
-    if model_colors is None:
-        model_colors = get_default_colors(models)
-    if model_labels is None:
-        model_labels = {model:model for model in models}
 
     # Do not display curves from bootstrap samples?
     if exclude_boot:
@@ -353,7 +328,7 @@ def plot_rocpr(run_path: Path, model_labels: dict = None,
     plt.savefig(run_path / fname, dpi=300, facecolor='white',  bbox_inches='tight')
 
 
-def plot_rocpr_interp(run_path: Path, model_labels: dict = None, model_colors: dict = None,
+def plot_rocpr_interp(run_path: Path, model_labels: dict = model_labels, model_colors: dict = model_colors,
                       figsize: tuple = (18, 6), hspace: float = 0.5, grid: bool = False,
                       models_incl: list = None, ci: bool = True, suf: str = '',
                       show_reduction_in_tests: bool = True, sens_fit10: bool = True):
@@ -379,7 +354,7 @@ def plot_rocpr_interp(run_path: Path, model_labels: dict = None, model_colors: d
 
     if sens_fit10:
         s = pd.read_csv(run_path / SENS_FIT_CI)
-        s = s.loc[(s.model_name == 'fit') & (s.thr_fit == 10) & (s.metric_name == 'sens_fit')]
+        s = s.loc[(s.model == 'fit') & (s.thr_fit == 10) & (s.metric_name == 'sens')]
         sens_fit = s.metric_value.item() * 100
 
     # Load interpolated data
@@ -400,15 +375,9 @@ def plot_rocpr_interp(run_path: Path, model_labels: dict = None, model_colors: d
         models = models_incl
         #roc = roc.loc[roc.model_name.isin(models_incl)]
         #pr = pr.loc[pr.model_name.isin(models_incl)] 
-        models = [mod for mod in models if mod in pr.model_name.unique()]
+        models = [mod for mod in models if mod in pr.model_name.unique()] 
     else:
         models = roc.model_name.unique()
-    
-    if model_colors is None:
-        model_colors = get_default_colors(models)
-    if model_labels is None:
-        model_labels = {model:model for model in models}
-
 
     pr_gain = pd.read_csv(run_path / PR_GAIN_CI)
     if 'metric_name' in pr_gain.columns:
@@ -512,7 +481,7 @@ def plot_rocpr_interp(run_path: Path, model_labels: dict = None, model_colors: d
 
 
 # ~ Net benefit curves ~
-def plot_dca(run_path: Path, model_labels: dict = None, model_colors: dict = None, 
+def plot_dca(run_path: Path, model_labels: dict = model_labels, model_colors: dict = model_colors, 
              figsize: tuple = (6, 5), xlim: tuple = (None, None), grid: bool = False, ni: bool = False,
              models_incl: list = None, ci: bool = True, suf: str = ''):
     print('\nPlotting decision analysis curves...')
@@ -551,11 +520,6 @@ def plot_dca(run_path: Path, model_labels: dict = None, model_colors: dict = Non
         models = [mod for mod in models if mod in df.model_name.unique()]
     else:
         models = df.model_name.unique()
-    
-    if model_colors is None:
-        model_colors = get_default_colors(models)
-    if model_labels is None:
-        model_labels = {model:model for model in models}
 
     # x axis limit?
     if xlim[0] is not None:
@@ -571,9 +535,9 @@ def plot_dca(run_path: Path, model_labels: dict = None, model_colors: dict = Non
 
     # Note: the 'all', 'none', and 'fit10' were computed separately under each model,
     # but are the same for all models
-    all = df.loc[(df.model == 'all')]
-    none = df.loc[(df.model == 'none')]
-    fit10 = df.loc[(df.model == 'fit10')]
+    all = df.loc[(df.model == 'all') & (df.model_name == models[0])]
+    none = df.loc[(df.model == 'none') & (df.model_name == models[0])]
+    fit10 = df.loc[(df.model == 'fit10') & (df.model_name == models[0])]
     model = df.loc[df.model == 'model']
 
     # Plot net benefit curves for models
@@ -611,7 +575,7 @@ def plot_dca(run_path: Path, model_labels: dict = None, model_colors: dict = Non
     plt.close()
 
 
-def plot_dca_panel(run_path: Path, model_labels: dict = None, model_colors: dict = None, 
+def plot_dca_panel(run_path: Path, model_labels: dict = model_labels, model_colors: dict = model_colors, 
                    figsize: tuple = (18, 6), ni: bool = False,
                    models_incl: list = None, ci: bool = False, suf: str = ''):
     print('\nPlotting decision analysis curves...')
@@ -652,11 +616,6 @@ def plot_dca_panel(run_path: Path, model_labels: dict = None, model_colors: dict
         models = [mod for mod in models if mod in df.model_name.unique()]
     else:
         models = df.model_name.unique()
-    
-    if model_colors is None:
-        model_colors = get_default_colors(models)
-    if model_labels is None:
-        model_labels = {model:model for model in models}
 
     # Plot
     fig, ax = plt.subplots(1, 3, figsize=figsize)
@@ -718,135 +677,869 @@ def _plot_dca(df, col, lab, models, ax, ci, model_colors, model_labels, title):
     ax.grid(which='major', zorder=1, alpha=0.5)
 
 
-# ~ Reduction in referrals ~
-def plot_reduction_tmp(run_path: Path, model_labels: dict = None, model_colors: dict = None, models_incl: list = None):
+# ~ For plotting event logs ~
+def plot_timeline(df, save_path, timecol='days_diagnosis_to_start', n=300, xmin=None, xmax=None, 
+                  plotname='timeline', save=True, save_pdf=False, dpi=200, subj_order=None, 
+                  all_ticks=False, subj_axis=False, hide_x=False, hide_y=False, vlines=True, anchor=1.25,
+                  seed=1, title=None, groupvar=None, groupvarname=None,
+                  subplots_vertical=False, title_loc='center',
+                  nrow=None, ncol=None, w=None, h=None, pad=1, legend_idx=None, pad_inches=0.5,
+                  gray=False, hide_axis=None, period=False, periodcol0='periodcol0', periodcol1='periodcol1',
+                  perioddelta=1, vdelta=2, colors=None, event_order=None, xlabel=None, drop_diagnosis=True):
+    
+    # Map events to color and shape
+    if xlabel is None:
+        xlabel = 'Days since first known diagnosis'
+    if colors is None:
+        if gray:
+            colors = { 'polypectomy': ['gray','o'],
+               'colonic stent':     ['gray', 'o'],
+               'colonoscopy' :      ['gray', 'o'],
+               'radical resection': ['gray','o'], 
+               'local excision':    ['gray','o'],
+               'chemotherapy':      ['gray','o'],
+               'radiotherapy':      ['gray','o'],
+               'death':             ['gray','o'],
+               'last alive':        ['gray','o'],
+               'scan':              ['gray', 'o'],
+               'TNM staging':       ['gray', 'o'],
+               'suspicious for recurrence': ['gray', 'o'],
+               'recurrence': ['gray', 'o'],
+               'suspicious for metastasis': ['gray', 'o'],
+               'metastasis': ['gray', 'o'],
+              }
+        else:
+            colors = { 'polypectomy':       ['yellow','o'],
+                       'colonic stent':     ['red', 2],
+                       'colonoscopy' :      ['black', 2],
+                       'radical resection': ['red','o'], 
+                       'local excision':    ['orange','o'],
+                       'chemotherapy':      ['blue','o'],
+                       'radiotherapy':      ['green','o'],
+                       'death':             ['gray','x'],
+                       'last alive':        ['gray','o'],
+                       'scan':              ['gray', 2],
+                       'TNM staging':       ['violet', '.'],
+                       'suspicious for recurrence': ['orange', 11],
+                       'recurrence': ['red', 11],
+                       'suspicious for metastasis': ['orange', 3],
+                       'metastasis': ['red', 3],
+                      }
 
-    # Load data
-    df = pd.read_csv(run_path / SENS_FIT_2_CI)
+    # Specify event order on legend
+    if event_order is None:
+        event_order = ['last alive', 'death', 'scan', 'colonoscopy',  'colonic stent', 'TNM staging',
+                       'chemotherapy', 'radiotherapy', 
+                       'polypectomy', 'local excision', 'radical resection',
+                       'suspicious for recurrence', 'recurrence', 'suspicious for metastasis', 'metastasis']
+    event_order = np.array(event_order)
+    
+    # Process the grouping variable and adjust plot height
+    if groupvar is not None:  # If grouping variable is defined
+        # Get values of the grouping variable and number of groups
+        values = df[groupvar].unique()
+        values = values[~pd.isnull(values)]
+        if np.issubdtype(values.dtype, np.floating):
+            values = values.astype(np.int)
+        values  = np.sort(values)
+        #print(values)
+        n_group = len(values)
+        
+        # Adjust plot height
+        test = df.groupby(groupvar)['subject'].nunique().max()
+        if n > test:
+            n_vline = test
+        else:
+            n_vline = n
+    else:  # If grouping variable is not defined
+        # Set number of groups to 1, and values to a dummy list
+        n_group = 1
+        values = [1]
+        
+        # Adjust plot height
+        test = df.subject.nunique()
+        if n > test:
+            n_vline = test
+        else:
+            n_vline = n
+    
+    # Drop diagnosis and birth as events
+    if np.isin('diagnosis', df.event) and drop_diagnosis:
+        df = df.loc[df.event != 'diagnosis']
+    if np.isin('birth', df.event):
+        df = df.loc[df.event != 'birth']
 
-    # x-axis label
-    df['xlabel'] = "thr FIT: " + df.thr_fit.astype(str) + "\nthr mod: " + (df.thr_mod * 100).round(4).astype(str)
-    df['add_low'] = df.ci_low - df.metric_value
-    df['add_high'] = df.ci_high - df.metric_value
-
-    # Quantities to plot, and transform to percentage scale
-    red = df.loc[df.metric_name == 'proportion_reduction_tests']
-    sens = df.loc[df.metric_name == 'delta_sens']
-
-    red[['metric_value', 'add_low', 'add_high']] *= 100
-    sens[['metric_value', 'add_low', 'add_high']] *= 100
-
-    # Model names, colors, labels
-    if models_incl is not None:
-        models = models_incl
-        models = [mod for mod in models if mod in df.model_name.unique()]
+    # Draw canvas
+    if n_vline < 15:
+        height = 15/3.5
     else:
-        models = df.model_name.unique()
+        height = n_vline/3.5
     
-    if model_colors is None:
-        model_colors = get_default_colors(models)
-    if model_labels is None:
-        model_labels = {model:model for model in models}
+    if nrow is not None and ncol is not None:
+        fig, ax = plt.subplots(nrow, ncol, figsize=(w, h))
+        fig.tight_layout(pad=pad)
+    else:
+        fig, ax = plt.subplots(1, n_group, figsize=(12*n_group, height))
     
-    # Plot
-    ncol = len(models)
-    fig, ax = plt.subplots(2, ncol, figsize=(5 * ncol, 8), constrained_layout=True)
-    if ncol == 1:
+    if n_group > 1:
+        ax = ax.flatten()
+    else:
         ax = [ax]
-
-    for i, model in enumerate(models):
-        r = red.loc[red.model_name==model]
-        r['xcoord'] = np.arange(r.shape[0])
-        ered = r[['add_low', 'add_high']].transpose().abs().to_numpy()
-        
-        s = sens.loc[sens.model_name==model]
-        s['xcoord'] = np.arange(r.shape[0])
-        esens = s[['add_low', 'add_high']].transpose().abs().to_numpy()
-        
-        ax[0, i].errorbar(r.xcoord, r.metric_value, ered, fmt='.', markersize=18, color=model_colors[model])
-        ax[0, i].set(title='Reduction in referrals, model: ' + model_labels[model],
-                     ylabel='Percent reduction in number of positive tests\nrelative to FIT (negative is better)')
-        ax[0, i].hlines(y=0, xmin=0, xmax=s.xcoord.max(), linestyle='dashed', color='red', alpha=0.8)
-        ax[0, i].set_xticks(r.xcoord)
-        ax[0, i].set_xticklabels(r.xlabel)
-
-        ax[1, i].errorbar(s.xcoord, s.metric_value, esens, fmt='.', markersize=18, color=model_colors[model])
-        ax[1, i].set(title='Delta sensitivity, model: ' + model_labels[model],
-                     ylabel='Percent cancers missed relative to FIT\n(negative is worse)')
-        ax[1, i].hlines(y=0, xmin=0, xmax=s.xcoord.max(), linestyle='dashed', color='red', alpha=0.8)
-        ax[1, i].set_xticks(s.xcoord)
-        ax[1, i].set_xticklabels(s.xlabel)
     
-    plt.savefig(run_path / 'plot_reduction_referrals.png', dpi=300, facecolor='white',  bbox_inches='tight')
+    # Loop over values
+    handles = np.empty(1)
+    labels  = np.empty(1)
+    for j, val in enumerate(values):
+        
+        # Data
+        if n_group > 1:
+            df_val = df.loc[df[groupvar] == val]
+        else:
+            df_val = df
+        
+        # Title
+        if groupvarname is not None:
+            title_group = groupvarname + '' + str(val)
+        elif title is not None:
+            title_group = title[j]
+        else:
+            title_group = title
+        
+        # Select n individuals randomly if requested
+        subj = df_val.subject.unique() 
+        if n < len(subj):
+            rng     = np.random.default_rng(seed=seed)
+            subj_n  = rng.choice(subj, n, replace=False)
+        else:
+            subj_n = subj
+        print('Plotting data for {} individuals...'.format(len(subj_n)))
+
+        # Sort the individuals in desired order
+        if subj_order is not None:
+            mask   = np.isin(subj_order, subj_n)
+            subj_n = subj_order[mask]
+
+        # Vertical line for diagnosis date
+        ax[j].vlines(x=0, ymin=0, ymax=n_vline+vdelta, linestyles='dashed', color='gray', linewidth=0.75, alpha=0.5, zorder=1)
+
+        # Vertical lines marking 6 months
+        time_all = df_val.loc[np.isin(df_val.subject, subj_n),timecol]
+        if vlines:
+            rep = np.floor(np.max(np.abs(time_all))).astype(int)
+            x = np.arange(-rep, rep+1)*(365/2)
+            x = x[x!=0]
+            ax[j].vlines(x=x, ymin=0, ymax=n_vline+vdelta, linestyles='dashed', color='gray', linewidth=0.75, alpha=0.25, zorder=1)
+
+        # Loop over subjects
+        for i, s in enumerate(subj_n):
+
+            # Subject's data 
+            df_subj = df_val.loc[df_val.subject == s]
+
+            # Get smallest and largest event times
+            time   = df_subj[timecol]
+            tmax   = time.max()
+            tmin   = time.min()
+            if tmin > 0:
+                tmin = 0
+            if tmax < 0:
+                tmax = 0
+
+            # Draw horizontal line for patient
+            ax[j].hlines(y=i+1, xmin=tmin, xmax=tmax, color='gray', alpha=0.5, linewidth=1, zorder=2)
+            
+            # Draw treatment period, if requested
+            if period:
+                pmax = df_subj[periodcol1].iloc[0] + perioddelta
+                pmin = df_subj[periodcol0].iloc[0] - perioddelta
+                ax[j].hlines(y=i+1, xmin=pmin, xmax=pmax, color='blue', alpha=0.2, linewidth=18, zorder=2)
+
+            # Get event types and plot events in each
+            event_types = df_subj['event'].unique()
+            for event in event_types:
+                time   = df_subj.loc[df_subj.event == event, timecol]
+                height = np.ones(len(time))*(i+1)
+                color, marker = colors[event][0], colors[event][1]
+                ax[j].scatter(time, height, color=color, s=70, alpha=0.5, marker=marker,
+                           edgecolors='gray', zorder=3, label=event)   
+
+            # Reformat axes
+            ax[j].spines['left'].set_color('gray') #('gray')
+            ax[j].spines['right'].set_color('none')
+            ax[j].spines['bottom'].set_color('gray')
+            ax[j].spines['top'].set_color('none')
+            ax[j].set(xlabel=xlabel, ylabel='Subject')
+            ax[j].set_ylim(0, n_vline+vdelta)
+
+        # Set x-axis limits
+        if (xmin is not None) and (xmax is None):
+            ax[j].set_xlim(xmin, time_all.max()+100)
+        elif (xmin is None) and (xmax is not None):
+            ax[j].set_xlim(time_all.min()-100, xmax)
+        elif (xmin is not None) and (xmax is not None):
+            ax[j].set_xlim(xmin, xmax)
+        else:
+            ax[j].set_xlim(time_all.min()-100, time_all.max()+100)
+            #ax.set_xticks(np.arange(xmin-2, xmax+1+2, 2))
+        if hide_x:
+            ax[j].set_xticks([0])
+        
+        # Force y-axis ticks to be integers
+        ax[j].yaxis.set_major_locator(MaxNLocator(integer=True))
+        if all_ticks:
+            ax[j].yaxis.set_ticks(np.arange(0+1, len(subj_n)+1, 1))
+        if subj_axis:
+            ax[j].yaxis.set_ticks(np.arange(0+1, len(subj_n)+1, 1))
+            ax[j].set_yticklabels(subj_n)
+        if hide_y:
+            ax[j].set_yticks([0])
+            
+        # Title
+        if title_group is not None:
+            ax[j].set_title(label=title_group, #fontdict={'fontweight':'bold'}, 
+                            loc=title_loc)
+        
+        h, l = ax[j].get_legend_handles_labels()
+        h, l = np.array(h), np.array(l)
+        handles = np.append(handles, h)
+        labels  = np.append(labels, l)
+    #
+    if hide_axis is not None:
+        for i in hide_axis:
+            ax[i].set_visible(False)
+
+    # Legend
+    #handles, labels = ax[j].get_legend_handles_labels()
+    #handles, labels = np.array(handles), np.array(labels)
+    unique_labels   = event_order[np.isin(event_order, np.unique(labels))]
+    idx = [np.where(labels == x)[0][0] for x in unique_labels]
+    if n_group > 1:
+        if legend_idx is not None:
+            for i in legend_idx:
+                ax[i].legend(handles[idx], labels[idx], loc='upper right',bbox_to_anchor=(anchor, 1), frameon=False)
+        else:
+            ax[j].legend(handles[idx], labels[idx], loc='upper right',bbox_to_anchor=(anchor, 1), frameon=False)
+    else:
+        ax[j].legend(handles[idx], labels[idx], loc='upper right',bbox_to_anchor=(anchor, 1), frameon=False)    
+    # Save
+    if save:
+        if save_pdf:
+            plt.savefig(save_path / (plotname+'.pdf'), dpi=dpi, facecolor='white',  bbox_inches='tight', pad_inches=pad_inches)
+        else:
+            plt.savefig(save_path / (plotname+'.png'), dpi=dpi, facecolor='white',  bbox_inches='tight', pad_inches=pad_inches)
+    plt.show()
+
+
+# ~ Curves over multiple time periods ~
+# This could be simplified a lot by re-using a base ROC/PR etc curve
+def plot_rocpr_agg(run_path: Path, model_plot: str, periods: list, time_labels: dict, 
+                   time_colors: dict, ci: bool = False, figsize: tuple = (18, 6),
+                   figsize2: tuple = None, hspace: float = 0.5, vspace: float = 0.33,
+                   grid: bool = True, sens_fit10: bool = True, 
+                   sens_fit10_alpha: float = 0.75,
+                   line_alpha: float = 0.75,
+                   models_plot2: list = ['nottingham-lr', 'nottingham-lr-boot', 
+                                         'nottingham-cox', 'nottingham-cox-boot', 'fit'],
+                   xlow: float = None, suf2: str = "",
+                   run_path_all_data: Path = None):
+    """Assumes data is in long format, see fitval.metrics.all_metrics"""
+
+    # Output file names
+    #region
+    suf = '_' + model_plot
+
+    fname = ROCPR_INTERP_PLOT
+    if ci:
+        fname += '_ci-95'
+    else:
+        fname += '_ci-none'
+    if xlow is not None:
+        fname += '_xlim-' + str(xlow)
+    fname += suf + '.png'
+
+    fname2 = ROCPR_INTERP_PLOT
+    if ci:
+        fname2 += '_ci-95'
+    else:
+        fname2 += '_ci-none'
+    if xlow is not None:
+        fname2 += '_xlim-' + str(xlow)
+    fname2 += suf2 + '_panes.png'
+
+    fname_svg = fname[:-3] + 'svg'
+    fname2_svg = fname2[:-3] + 'svg'
+    #endregion
+
+
+    # .... Prepare data ....
+    #region
+
+    # Get sensitivity of FIT >= 10
+    s = pd.read_csv(run_path / SENS_FIT_CI)
+    s = s.loc[(s.model == 'fit') & (s.thr_fit == 10) & (s.metric_name == 'sens')]
+    sens_fit = s.set_index('period').metric_value * 100
+    sens_fit = sens_fit.rename('sens_fit')
+    if run_path_all_data is not None:
+        s2 = pd.read_csv(run_path_all_data / SENS_FIT_CI)
+        s2 = s2.loc[(s.model == 'fit') & (s2.thr_fit == 10) & (s2.metric_name == 'sens')]
+        sens_fit['all'] = s2.metric_value.item() * 100
+
+    # Prepare interpolated ROC and PR data
+    roc = pd.read_csv(run_path / ROC_CI)
+    if run_path_all_data is not None:
+        roc2 = pd.read_csv(run_path_all_data / ROC_CI)
+        roc2['period'] = 'all'
+        roc = pd.concat(objs=[roc, roc2], axis=0)
+
+    pr = pd.read_csv(run_path / PR_CI)
+    if run_path_all_data is not None:
+        pr2 = pd.read_csv(run_path_all_data / PR_CI)
+        pr2['period'] = 'all'
+        pr = pd.concat(objs=[pr, pr2], axis=0)
+
+    roc = roc.loc[roc.metric_name == 'tpr'].rename(columns={'metric_value': 'tpr'})
+
+    sens_max = pr.loc[pr.metric_name=='max_recall'].rename(columns={'metric_value': 'max_recall'})
+    sens_max = sens_max.loc[sens_max.model_name=='fit', ['period', 'max_recall']].drop_duplicates()
+
+    pr = pr.loc[pr.metric_name == 'precision'].rename(columns={'metric_value': 'precision'})
+
+    # Prepare interpolated PR gain data
+    pr_gain = pd.read_csv(run_path / PR_GAIN_CI)
+    if run_path_all_data is not None:
+        pr_gain2 = pd.read_csv(run_path_all_data / PR_GAIN_CI)
+        pr_gain2['period'] = 'all'
+        pr_gain = pd.concat(objs=[pr_gain, pr_gain2], axis=0)
+
+    name = 'proportion_reduction_tests'
+    test_red = pr_gain.loc[pr_gain.metric_name == name].rename(columns={'metric_value': name})
+
+    name = 'precision_gain'
+    pr_gain = pr_gain.loc[pr_gain.metric_name == name].rename(columns={'metric_value': name})
+
+    # Retain sensitivities below sens_max
+    #test_red = test_red.loc[test_red.recall <= sens_max]
+    #pr_gain = pr_gain.loc[pr_gain.recall <= sens_max]
+
+    test_red = test_red.merge(sens_max, how='left')
+    pr_gain = pr_gain.merge(sens_max, how='left')
+
+    test_red = test_red.loc[test_red.recall <= test_red.max_recall]
+    pr_gain = pr_gain.loc[pr_gain.recall <= pr_gain.max_recall]
+
+    # Rescale to percentage
+    scale = 100
+    roc[['tpr', 'fpr', 'ci_low', 'ci_high']] *= scale
+    pr[['recall', 'precision', 'ci_low', 'ci_high']] *= scale
+    pr_gain[['recall', 'precision_gain', 'ci_low', 'ci_high']] *= scale
+    test_red[['recall', 'proportion_reduction_tests', 'ci_low', 'ci_high']] *= scale
+    #endregion
+
+
+    # .... Plot for single model all time periods ....
+    #region
+    models_show = [model_plot]
+
+    fig, ax = plt.subplots(1, 3, figsize=figsize, constrained_layout=False)
+
+    for m in models_show:
+        for period in periods:
+            u = roc.loc[(roc.model_name == m) & (roc.period == period)]
+            v = pr.loc[(pr.model_name == m) & (pr.period == period)]
+            w = pr_gain.loc[(pr_gain.model_name == m) & (pr_gain.period == period)]
+            z = test_red.loc[(test_red.model_name == m) & (test_red.period == period)]
+
+            if m == 'fit':
+                plot_line = 'dashed'
+                plot_label = None
+            else:
+                plot_line = 'solid'
+                plot_label = time_labels[period]
+
+            # ROC curve
+            ax[0].plot(u.fpr, u.tpr, label=plot_label, alpha=line_alpha, color=time_colors[period], linestyle=plot_line)
+            #ax[0].fill_betweenx(u.tpr, u.ci_low, u.ci_high, alpha=0.2, facecolor=model_colors[m], edgecolor=None)
+            if ci:
+                ax[0].fill_between(u.fpr, u.ci_low, u.ci_high, alpha=0.2, facecolor=time_colors[period], edgecolor=None)
+            if sens_fit10:
+                ax[0].axhline(y=sens_fit[period], color=time_colors[period], linestyle='dotted', alpha=sens_fit10_alpha)
+
+            # PR curve
+            ax[1].plot(v.recall, v.precision, label=plot_label, alpha=line_alpha, color=time_colors[period], linestyle=plot_line)
+            if ci:
+                ax[1].fill_between(v.recall, v.ci_low, v.ci_high, alpha=0.2, facecolor=time_colors[period], edgecolor=None)
+            if sens_fit10:
+                ax[1].axvline(x=sens_fit[period], color=time_colors[period], linestyle='dotted', alpha=sens_fit10_alpha)
+
+            # Gain in PR curve
+            if m != 'fit':
+                ax[2].plot(z.recall, z.proportion_reduction_tests, label=plot_label, alpha=line_alpha, 
+                        color=time_colors[period], linestyle=plot_line)
+                if ci:
+                    ax[2].fill_between(z.recall, z.ci_low, z.ci_high, alpha=0.2, facecolor=time_colors[period], edgecolor=None)
+                if sens_fit10:
+                    ax[2].axvline(x=sens_fit[period], color=time_colors[period], linestyle='dotted', alpha=sens_fit10_alpha)
+
+    # Adjust
+    ax[0].set(xlabel='False positive rate', ylabel='Sensitivity (% cancers detected)', title='ROC curve')
+    #ax[0].legend(frameon=False, loc='best')
+    if xlow is None:
+        ax[0].set_xticks(np.arange(0, 1.1, 0.1) * scale)
+        ax[0].set_yticks(np.arange(0, 1.1, 0.1) * scale)
+    else:
+        ax[0].set_xticks(np.arange(0, 1.1, 0.1) * scale)
+        ax[0].set_yticks(np.arange(xlow, 1.0, 0.05) * scale)  
+        ax[0].set(ylim=(xlow * scale, 101))     
+
+    ax[1].set(xlabel='Sensitivity (% cancers detected)', ylabel='Positive predicive value',
+             title='Precision-recall curve', ylim=(0, None))
+    #ax[1].legend(frameon=False, loc='best')
+    if xlow is None:
+        ax[1].set_xticks(np.arange(0, 1.1, 0.1) * scale)
+        ax[1].set_yticks(np.arange(0, 1.1, 0.1) * scale)
+    else:
+        ax[1].set_xticks(np.arange(xlow, 1.0, 0.05) * scale)
+        ax[1].set_yticks(np.arange(0, 0.55, 0.05) * scale) 
+        ax[1].set(xlim=(xlow * scale, None), ylim=(0, 40))           
+
+    ax[2].hlines(y=0, xmin=0, xmax=1*scale, color='red', linestyles='dashed', alpha=0.5, label=model_labels['fit'])
+    ax[2].set(xlabel='Sensitivity (% cancers detected)', ylabel='Percent reduction in number of tests (lower is better)',
+                title='Test reduction curve')
+    ## From Gemini
+    handles1, labels1 = ax[0].get_legend_handles_labels()
+    handles2, labels2 = ax[2].get_legend_handles_labels()
+    combined_handles = []
+    combined_labels = []
+    for handle, label in zip(handles1 + handles2, labels1 + labels2):
+        if label not in combined_labels or label == "FIT test":
+            combined_handles.append(handle)
+            combined_labels.append(label)
+    ax[2].legend(combined_handles, combined_labels, frameon=False, loc='upper left', bbox_to_anchor=(1.02, 1))
+    #ax[2].legend(frameon=False, loc='best', bbox_to_anchor=(1.02, 1))
+    if xlow is None:
+        ax[2].set_xticks(np.arange(0, 1.1, 0.1) * scale)
+    else:
+        ax[2].set_xticks(np.arange(xlow, 1.0, 0.05) * scale)
+        ax[2].set_yticks(np.arange(-0.4, 0.5, 0.1) * scale)    
+        ax[2].set(xlim = (xlow * scale, 101), ylim = (-40, 40))   
+  
+    if grid:
+        for z in [0, 1, 2]:
+            ax[z].grid(which='major', zorder=1, alpha=0.5)
+            #ax[z].minorticks_on()
+            #ax[z].grid(which='minor')
+
+    plt.subplots_adjust(hspace=hspace)
+    if run_path is not None:
+        plt.savefig(run_path / fname, dpi=300, facecolor='white',  bbox_inches='tight')
+        plt.savefig(run_path / fname_svg, dpi=300, facecolor='white',  bbox_inches='tight')
+    plt.close()
+    #endregion
+
+
+    # .... Plot for all models ....
+    #region
+    if figsize2 is None:
+        figsize2 = (12, len(periods) * 3)
+    #fig2, ax_all = plt.subplots(len(periods), 3, figsize=figsize2, constrained_layout=False)
+    ## Based on user tdy at https://stackoverflow.com/questions/27426668/row-titles-for-matplotlib-subplot
+    fig2 = plt.figure(constrained_layout=True, figsize=figsize2)
+    subfigs = fig2.subfigures(nrows=len(periods), ncols=1)
+
+    abc = string.ascii_uppercase
+
+    model_show = models_plot2
+    for i, period in enumerate(periods):
+
+        subfig = subfigs[i]
+        subfig.suptitle(abc[i] + '. ' + time_labels[period], x=0.0, ha='left', fontsize=12) #, fontweight='bold')
+
+        #ax = ax_all[i, :]
+        ax = subfig.subplots(nrows=1, ncols=3)
+
+        for m in model_show:
+            u = roc.loc[(roc.model_name == m) & (roc.period == period)]
+            v = pr.loc[(pr.model_name == m) & (pr.period == period)]
+            w = pr_gain.loc[(pr_gain.model_name == m) & (pr_gain.period == period)]
+            z = test_red.loc[(test_red.model_name == m) & (test_red.period == period)]
+
+            # ROC curve
+            ax[0].plot(u.fpr, u.tpr, label=model_labels[m], alpha=0.75, color=model_colors[m])
+            #ax[0].fill_betweenx(u.tpr, u.ci_low, u.ci_high, alpha=0.2, facecolor=model_colors[m], edgecolor=None)
+            if ci:
+                ax[0].fill_between(u.fpr, u.ci_low, u.ci_high, alpha=0.2, facecolor=model_colors[m], edgecolor=None)
+            if sens_fit10:
+                ax[0].axhline(y=sens_fit[period], color='gray', linestyle='solid', alpha=0.3)
+
+            # PR curve
+            ax[1].plot(v.recall, v.precision, label=model_labels[m], alpha=0.75, color=model_colors[m])
+            if ci:
+                ax[1].fill_between(v.recall, v.ci_low, v.ci_high, alpha=0.2, facecolor=model_colors[m], edgecolor=None)
+            if sens_fit10:
+                ax[1].axvline(x=sens_fit[period], color='gray', linestyle='solid', alpha=0.3)
+
+            # Test reduction curve
+            if m != 'fit':
+                ax[2].plot(z.recall, z.proportion_reduction_tests, label=model_labels[m], alpha=0.75, color=model_colors[m])
+                if ci:
+                    ax[2].fill_between(z.recall, z.ci_low, z.ci_high, alpha=0.2, facecolor=model_colors[m], edgecolor=None)
+                if sens_fit10:
+                    ax[2].axvline(x=sens_fit[period], color='gray', linestyle='solid', alpha=0.3)
+        
+        # Adjust
+        ax[0].set(xlabel='False positive rate', ylabel='Sensitivity\n(% cancers detected)', title='ROC curve')
+        #ax[0].legend(frameon=False, loc='best')
+        if xlow is None:
+            ax[0].set_xticks(np.arange(0, 1.1, 0.1) * scale)
+            ax[0].set_yticks(np.arange(0, 1.1, 0.1) * scale)
+        else:
+            ax[0].set_xticks(np.arange(0, 1.1, 0.1) * scale)
+            ax[0].set_yticks(np.arange(xlow, 1.0, 0.05) * scale)  
+            ax[0].set(ylim=(xlow * scale, 101))  
+
+        ax[1].set(xlabel='Sensitivity\n(% cancers detected)', ylabel='PPV',
+                title='Precision-recall curve',
+                ylim=(0, None))
+        #ax[1].legend(frameon=False, loc='best')
+        if xlow is None:
+            ax[1].set_xticks(np.arange(0, 1.1, 0.1) * scale)
+            ax[1].set_yticks(np.arange(0, 1.1, 0.1) * scale)
+        else:
+            ax[1].set_xticks(np.arange(xlow, 1.0, 0.05) * scale)
+            ax[1].set_yticks(np.arange(0, 0.5, 0.1) * scale) 
+            ax[1].set(xlim=(xlow * scale, None), ylim=(0, 40)) 
+
+        ax[2].hlines(y=0, xmin=0, xmax=1*scale, color='red', linestyles='dashed', alpha=0.5, label=model_labels['fit'])
+        ax[2].set(xlabel='Sensitivity\n(% cancers detected)', ylabel='Percent reduction in num tests\n(lower is better)',
+                title='Test reduction curve')
+
+        ## From Gemini
+        handles1, labels1 = ax[0].get_legend_handles_labels()
+        handles2, labels2 = ax[2].get_legend_handles_labels()
+        combined_handles = []
+        combined_labels = []
+        for handle, label in zip(handles1 + handles2, labels1 + labels2):
+            if label not in combined_labels or label == "FIT test":
+                combined_handles.append(handle)
+                combined_labels.append(label)
+        ax[2].legend(combined_handles, combined_labels, frameon=False, loc='upper left', bbox_to_anchor=(1.02, 1))
+        #ax[2].legend(frameon=False, loc='best', bbox_to_anchor=(1.02, 1))
+        if xlow is None:
+            ax[2].set_xticks(np.arange(0, 1.1, 0.1) * scale)
+        else:
+            ax[2].set_xticks(np.arange(xlow, 1.0, 0.05) * scale)
+            ax[2].set_yticks(np.arange(-0.4, 0.5, 0.1) * scale)    
+            ax[2].set(xlim = (xlow * scale, 101), ylim = (-40, 40)) 
+
+        if grid:
+            for z in [0, 1, 2]:
+                ax[z].grid(which='major', zorder=1, alpha=0.5)
+                #ax[z].minorticks_on()
+                #ax[z].grid(which='minor')
+
+    #hspace2 = 0.75
+    #vspace2 = 0.5
+    #plt.subplots_adjust(hspace=hspace2, wspace=vspace2)
+    if run_path is not None:
+        plt.savefig(run_path / fname2, dpi=300, facecolor='white',  bbox_inches='tight')
+        plt.savefig(run_path / fname2_svg, dpi=300, facecolor='white',  bbox_inches='tight')
     plt.close()
 
+    #endregion
+    
+    return fig, fig2
 
-def plot_reduction(run_path: Path, model_labels: dict = None, model_colors: dict = None, 
-                   models_incl: list = None, thr_fit: float = 10, thr_mod: float = None,
-                   figsize: tuple = (12, 6)):
 
-    # Load data
-    df = pd.read_csv(run_path / SENS_FIT_2_CI)
+def plot_cal_smooth_agg(run_path, model_plot: str, periods: list, time_labels: dict, 
+                        time_colors: dict, figsize: tuple = (12, 6),
+                        grid: bool = True, figsize2: tuple = None, ci: bool = False,
+                        models_incl: list = ['nottingham-lr', 'nottingham-lr-boot', 
+                                             'nottingham-cox', 'nottingham-cox-boot'],
+                        suf2: str = "", run_path_all_data: Path = None):
+    """Assumes data is in long format, see fitval.metrics.all_metrics"""
 
-    # Filter
-    df = df.loc[df.thr_fit == thr_fit]
-    assert df.shape[0] > 0
+    # Output file names
+    #region
+    if model_plot is not None:
+        suf = '_' + model_plot
 
-    if thr_mod is not None:
-        df = df.loc[df.thr_mod == thr_mod]
-        assert df.shape[0] > 0
+        fname = PLOT_CAL_SMOOTH
+        if ci:
+            fname += '_ci-95'
+        else:
+            fname += '_ci-none'
+        fname += suf + '.png'
+
+    fname2 = PLOT_CAL_SMOOTH
+    if ci:
+        fname2 += '_ci-95'
     else:
-        thr_use = df.loc[(df.metric_name=='delta_sens') & (df.metric_value==0), ['model_name', 'thr_mod']]
-        df = df.merge(thr_use, how='inner')
+        fname2 += '_ci-none'
+    fname2 += suf2 + '_panes.png'
+    
+    fname_svg = fname[:-3] + 'svg'
+    fname2_svg = fname2[:-3] + 'svg'
 
-    # CI
-    df['add_low'] = df.ci_low - df.metric_value
-    df['add_high'] = df.ci_high - df.metric_value
+    #endregion
 
-    # Quantities to plot, and transform to percentage scale
-    red = df.loc[df.metric_name == 'proportion_reduction_tests']
-    sens = df.loc[df.metric_name == 'delta_sens']
 
-    red[['metric_value', 'add_low', 'add_high']] *= 100
-    sens[['metric_value', 'add_low', 'add_high']] *= 100
+    # .... Prepare data ....
+    #region
 
-    # Model names, colors, labels
+    df = pd.read_csv(run_path / CAL_SMOOTH_CI)
+    if run_path_all_data is not None:
+        df2 = pd.read_csv(run_path_all_data / CAL_SMOOTH_CI)
+        df2['period'] = 'all'
+        df = pd.concat(objs=[df, df2], axis=0)
+        
+    if 'metric_name' in df.columns:
+        name = 'prob_true'
+        df = df.loc[df.metric_name == name].rename(columns={'metric_value': name})
+
     if models_incl is not None:
         models = models_incl
+        #df = df.loc[df.model_name.isin(models_incl)]
         models = [mod for mod in models if mod in df.model_name.unique()]
     else:
         models = df.model_name.unique()
+
+    # Spline curves don't have frac, and lowess curves don't have knots 
+    # just in case fill in missing values to identify groups correctly
+    df.frac = df.frac.fillna('none')
+    #df.n_knots = df.n_knots.fillna('none')
+    #df.strategy = df.strategy.fillna('none')
+    df.fit_ub = df.fit_ub.fillna('none')
+    df.loc[df.ymax > 0.2, 'ymax'] = 1  # For file names only
+    df.loc[df.ymax < 0.2, 'ymax'] = 0.2   # For file names only
+
+    groups = df[['frac', 'fit_ub', 'ymax']].drop_duplicates()
+    assert groups.shape[0] == 2
+
+    groups['title'] = ["A. Clinically relevant range of predicted risks",
+                       "B. Full range of predicted risks"]
+    groups['title2'] = ["Relevant range of predicted risk",
+                       "Full range of predicted risk"]
+
+    #endregion
+
+    # .... Plot for single model over time periods ....
+    #region
+    if model_plot is not None:
+        fig, axs = plt.subplots(1, 2, figsize=figsize, constrained_layout=False)
+        m = model_plot
+
+        for i, (__, row) in enumerate(groups.iterrows()):
+            for period in periods:
+
+                mask = (df.frac == row.frac) & (df.fit_ub == row.fit_ub) & (df.ymax == row.ymax)
+                mask = mask & (df.period == period) & (df.model_name == m)
+                dfsub = df.loc[mask]
+                title = row.title
+
+                ax = axs[i]
+
+                # Calibration curve with confidence intervals
+                ax.plot(dfsub.prob_pred, dfsub.prob_true, color=time_colors[period], alpha=0.75, 
+                        linestyle='solid', label=time_labels[period], zorder=2)
+                if ci:
+                    ax.fill_between(dfsub.prob_pred, dfsub.ci_low, dfsub.ci_high, alpha=0.25, 
+                                    facecolor=time_colors[period], edgecolor=None)
+
+                # Ideal calibration line
+                eps = 0.
+                ax.plot([0-eps, 1+eps], [0-eps, 1+eps], color='gray', alpha=1, linewidth=1, linestyle='dashed', zorder=1)
+
+                # Adjustments
+                ymax = row.ymax
+                step = ymax / 10
+                xticks = np.arange(0, ymax + step, step)
+                if ymax in [0.2, 1]:
+                    xlabels = (xticks * 100).astype(int)
+                else:
+                    xlabels = np.round(xticks * 100, 1)
+                
+                eps = step / 2
+                xlim = (0 - eps, ymax + eps)
+                if ymax <= 0.5:
+                    yticks = np.arange(0, 0.5 + 0.05, 0.05)
+                    ylim=(0 - 0.025, 0.5 + 0.025)
+                else:
+                    yticks = np.arange(0, 1.1, 0.1)
+                    ylim=(0 - eps, 1 + eps)
+                ylabels = (yticks * 100).astype(int)
+
+                ax.set_xticks(xticks)
+                ax.set_xticklabels(xlabels)
+                ax.set_yticks(yticks)
+                ax.set_yticklabels(ylabels)
+                ax.set(xlabel='Predicted probability (%)', ylabel='Observed probability (%)', title=title,
+                    xlim=xlim, ylim=ylim)
+                ax.legend(frameon=False)
+
+                if grid:
+                    ax.grid(which='major', zorder=1, alpha=0.5)
+                    #ax.minorticks_on()
+                    #ax.grid(which='minor')
+
+        plt.savefig(run_path / fname, dpi=300, facecolor='white',  bbox_inches='tight')
+        plt.savefig(run_path / fname_svg, dpi=300, facecolor='white',  bbox_inches='tight')
+    #endregion
+
+    # .... Plot multiple models, time periods in rows ....
+    if figsize2 is None:
+        figsize2 = (10, len(periods) * 3.3)
+
+    fig2 = plt.figure(constrained_layout=True, figsize=figsize2)
+    subfigs = fig2.subfigures(nrows=len(periods), ncols=1)
+
+    abc = string.ascii_uppercase
+    model_show = models_incl
+
+    for i, period in enumerate(periods):
+
+        subfig = subfigs[i]
+        subfig.suptitle(abc[i] + '. ' + time_labels[period], x=0.0, ha='left', fontsize=12) #, fontweight='bold')
+
+        #ax = ax_all[i, :]
+        axs = subfig.subplots(nrows=1, ncols=2)
+        for i, (__, row) in enumerate(groups.iterrows()):
+            ax = axs[i]
+
+            for m in model_show:
+
+                mask = (df.frac == row.frac) & (df.fit_ub == row.fit_ub) & (df.ymax == row.ymax)
+                mask = mask & (df.period == period) & (df.model_name == m)
+                dfsub = df.loc[mask]
+                title = row.title2
+
+                ax = axs[i]
+
+                # Calibration curve with confidence intervals
+                ax.plot(dfsub.prob_pred, dfsub.prob_true, color=model_colors[m], alpha=0.75, 
+                        linestyle='solid', label=model_labels[m], zorder=2)
+                if ci:
+                    ax.fill_between(dfsub.prob_pred, dfsub.ci_low, dfsub.ci_high, alpha=0.25, 
+                                    facecolor=model_colors[m], edgecolor=None)
+
+                # Ideal calibration line
+                eps = 0.
+                ax.plot([0-eps, 1+eps], [0-eps, 1+eps], color='gray', alpha=1, linewidth=1, linestyle='dashed', zorder=1)
+
+                # Adjustments
+                ymax = row.ymax
+                step = ymax / 10
+                xticks = np.arange(0, ymax + step, step)
+                if ymax in [0.2, 1]:
+                    xlabels = (xticks * 100).astype(int)
+                else:
+                    xlabels = np.round(xticks * 100, 1)
+                
+                eps = step / 2
+                xlim = (0 - eps, ymax + eps)
+                if ymax <= 0.5:
+                    yticks = np.arange(0, 0.5 + 0.05, 0.05)
+                    ylim=(0 - 0.025, 0.5 + 0.025)
+                else:
+                    yticks = np.arange(0, 1.1, 0.1)
+                    ylim=(0 - eps, 1 + eps)
+                ylabels = (yticks * 100).astype(int)
+
+                ax.set_xticks(xticks)
+                ax.set_xticklabels(xlabels)
+                ax.set_yticks(yticks)
+                ax.set_yticklabels(ylabels)
+                ax.set(xlabel='Predicted probability (%)', ylabel='Observed probability (%)', title=title,
+                    xlim=xlim, ylim=ylim)
+                ax.legend(frameon=False)
+
+            if grid:
+                ax.grid(which='major', zorder=1, alpha=0.5)
+                #ax.minorticks_on()
+                #ax.grid(which='minor')
+    plt.savefig(run_path / fname2, dpi=300, facecolor='white',  bbox_inches='tight')
+    plt.savefig(run_path / fname2_svg, dpi=300, facecolor='white',  bbox_inches='tight')
+
+
+def plot_dca_agg(run_path: Path, periods: list, time_labels: dict,
+                 model_labels: dict = model_labels, model_colors: dict = model_colors, 
+                 figsize: tuple = None, ni: bool = False,
+                 models_incl: list = None, ci: bool = False, suf: str = '',
+                 run_path_all_data: Path = None):
+    print('\nPlotting decision analysis curves...')
+
+    # Output file name
+    fname = PLOT_DCA
+    if ni:
+        fname += '_avoided'
+    else:
+        fname += '_benefit'
+
+    if ci:
+        fname += '_ci-95'
+    else:
+        fname += '_ci-none'
+
+    fname += suf
+    fname += '.png'
+    fname_svg = fname[:-3] + 'svg'
+
+    # Data, y-axis value column, y-axis label
+    df = pd.read_csv(run_path / DC_CI)
+    if run_path_all_data is not None:
+        df2 = pd.read_csv(run_path_all_data / DC_CI)
+        df2['period'] = 'all'
+        df = pd.concat(objs=[df, df2], axis=0)
+    if ni:
+        col = 'net_intervention_avoided'
+        lab = 'Net intervention avoided'
+    else:
+        col = 'net_benefit'
+        lab = 'Net benefit'
     
-    if model_colors is None:
-        model_colors = get_default_colors(models)
-    if model_labels is None:
-        model_labels = {model:model for model in models}
-    
+    df = df.loc[df.metric_name == col].rename(columns={'metric_value': col})
+    df = df.sort_values(by=['model_name', 'threshold', col], ascending=[True, True, False])
+
+    # Exclude any models?
+    if models_incl is not None:
+        models = models_incl
+        #df = df.loc[df.model_name.isin(models_incl)]
+        models = [mod for mod in models if mod in df.model_name.unique()]
+    else:
+        models = df.model_name.unique()
+
     # Plot
-    width = 0.75
-    fig, ax = plt.subplots(2, 1, figsize=figsize, constrained_layout=True)
-    
-    for i, model in enumerate(models):
-        r = red.loc[red.model_name==model]
-        err_reduction = r[['add_low', 'add_high']].transpose().abs().to_numpy()
-        ax[0].bar(x=[i], height=[r.metric_value.item()], yerr=err_reduction, color=model_colors[model], width=width, label=model_labels[model])
-    ax[0].hlines(y=0, xmin=-width/2, xmax=len(models)-1+width/2, linestyle='solid', color='red', alpha=0.8)
-    ax[0].set(ylabel='Percent reduction in number of positive tests\nrelative to FIT (negative is better)',
-              title='Reduction in referrals')
-    ax[0].set_xticks([i for i in range(len(models))])
-    ax[0].set_xticklabels(models)
-    ax[0].legend(frameon=False, bbox_to_anchor=(1.025, 1), title='Model')
+    if figsize is None:
+        figsize = (10, len(periods) * 3.3)
 
-    for i, model in enumerate(models):
-        s = sens.loc[sens.model_name==model]
-        err_sens = s[['add_low', 'add_high']].transpose().abs().to_numpy()
-        ax[1].bar(x=[i], height=[s.metric_value.item()], yerr=err_sens, color=model_colors[model], width=width, label=model_labels[model])
-    ax[1].hlines(y=0, xmin=-width/2, xmax=len(models)-1+width/2, linestyle='solid', color='red', alpha=0.8)
-    ax[1].set(ylabel='Delta sensitivity (model minus FIT)',
-              title='Cancers missed')
-    ax[1].set_xticks([i for i in range(len(models))])
-    ax[1].set_xticklabels(models)
-    # ax[1].legend(frameon=False)
+    fig = plt.figure(constrained_layout=True, figsize=figsize)
+    subfigs = fig.subfigures(nrows=len(periods), ncols=1)
 
-    plt.savefig(run_path / 'plot_reduction_referrals.png', dpi=300, facecolor='white',  bbox_inches='tight')
+    abc = string.ascii_uppercase
+
+    for i, period in enumerate(periods):
+
+        subfig = subfigs[i]
+        subfig.suptitle(abc[i] + '. ' + time_labels[period], x=0.0, ha='left', fontsize=12) #, fontweight='bold')
+
+        cut = [5, 20, 50]
+        axs = subfig.subplots(nrows=1, ncols=len(cut))
+
+        for j, c in enumerate(cut):
+            ax = axs[j]
+            dfsub = df.loc[(df.threshold <= c / 100) & (df.period == period)]
+            title = 'Risk ≤ ' + str(c) + ' %'
+            _plot_dca(dfsub, col, lab, models, ax, ci, model_colors, model_labels, title)
+
+        if ni:
+            for i in [0, 1, 2]:
+                axs[i].legend(frameon=False, loc='lower right')
+        else:
+            for i in [1, 2]:
+                axs[i].legend(frameon=False, loc='upper right')
+        axs[0].legend(frameon=False, loc='lower left')
+
+
+    plt.savefig(run_path / fname, dpi=300, facecolor='white',  bbox_inches='tight')
+    plt.savefig(run_path / fname_svg, dpi=300, facecolor='white',  bbox_inches='tight')
     plt.close()
+

@@ -1,0 +1,13 @@
+#typer==0.6.1
+#gitpython==3.1.24
+#pytest==7.1.3
+pandas==2.2.2
+matplotlib==3.5.1
+seaborn==0.13.2
+regex==2020.10.15  # Older version of regex required for textmining code to work, e.g. 2022.10.31 does not work
+scikit-learn==1.4.2
+pandas==2.2.2
+interpret==0.6.7
+pyarrow==16.1.0
+openpyxl==3.1.5
+statsmodels==0.14.2

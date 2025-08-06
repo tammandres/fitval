@@ -15,41 +15,32 @@ class PerformanceData:
     """Data class for storing performance metrics"""
 
     # Global discrimination and calibration metrics
-    disc: pd.DataFrame = pd.DataFrame()  #  Global discrmination metrics
-    cal: pd.DataFrame = pd.DataFrame()  #  Global calibration metrics
+    disc: pd.DataFrame() = pd.DataFrame()  #  Global discrmination metrics
+    cal: pd.DataFrame() = pd.DataFrame()  #  Global calibration metrics
 
-    # Diagnostic metrics computed at predefined model risk score thresholds
-    # It is assumed that the model yields a prediction between 0 and 1 that can be interpreted as probability of cancer
-    thr_risk: pd.DataFrame = pd.DataFrame()
-    
-    # Diagnostic metrics computed at a small number of prespecified sensitivity levels
-    # For example, PPV and NPV at 80% and 90% sensitivities
-    thr_sens: pd.DataFrame = pd.DataFrame()
-    
-    # Diagnostic metrics computed at sensitivities corresponding to prespecified FIT thresholds
-    # For example, PPV and NPV corresponding to sensitivities of FIT >= 2 and FIT >= 10
-    # Importantly, this also computes the percent reduction in total number of positive tests
-    # when model and FIT are evaluated at the same level of sensitivity
-    thr_sens_fit: pd.DataFrame = pd.DataFrame()  
-    
-    # Diagnostic metrics computed at FIT thresholds and model thresholds
-    thr_fit_mod: pd.DataFrame = pd.DataFrame()  
+    # Basic metrics at various thresholds
+    thr_risk: pd.DataFrame() = pd.DataFrame()  # Basic metrics at predefined risk thresholds
+    thr_sens: pd.DataFrame() = pd.DataFrame()  # Basic metrics at a small number of predefined sensitivities
+    thr_sens_fit: pd.DataFrame() = pd.DataFrame()  # Basic metrics at sensitivities corresponding to FIT thresholds of 2, 10, 100
+    thr_sens_fit_gain: pd.DataFrame() = pd.DataFrame()  # Proportion reduction in positive tests compared to FIT
+    thr_sens_fit2: pd.DataFrame() = pd.DataFrame()  # Basic metrics at FIT thresholds of 2, 10, 100 and corresponding model_thr estimated in original data
+    thr_sens_fit_gain2: pd.DataFrame() = pd.DataFrame()  # Proportion reduction in positive tests compared to FIT, from thr_sens_fit2
 
     # Receiver-operating characteristic (ROC) curves
-    roc: pd.DataFrame = pd.DataFrame()  # Empirical ROC curve data
-    roc_int: pd.DataFrame = pd.DataFrame()  # Interpolated ROC curve (interpolated sensitivity on fixed grid of fpr)
+    roc: pd.DataFrame() = pd.DataFrame()  # Empirical ROC curve data
+    roc_int: pd.DataFrame() = pd.DataFrame()  # Interpolated ROC curve (interpolated sensitivity on fixed grid of fpr)
 
     # Precision-recall (PR) curves
-    pr: pd.DataFrame = pd.DataFrame()  # Empirical PR curve data
-    pr_int: pd.DataFrame = pd.DataFrame()  # Interpolated PR curve data (PPV, NPV, specificity, TP, FP, TN, FN interpolated at fixed grid of sensitivity)
-    pr_gain: pd.DataFrame = pd.DataFrame()  # Gain in precision compared to FIT, and reduction in number of tests comparaed to FIT, computed from interpolated PR curve data data
+    pr: pd.DataFrame() = pd.DataFrame()  # Empirical PR curve data
+    pr_int: pd.DataFrame() = pd.DataFrame()  # Interpolated PR curve data (PPV, NPV, specificity, TP, FP, TN, FN interpolated at fixed grid of sensitivity)
+    pr_gain: pd.DataFrame() = pd.DataFrame()  # Gain in precision compared to FIT, and reduction in number of tests comparaed to FIT, computed from interpolated PR curve data data
 
     # Calibration curves
-    cal_bin: pd.DataFrame = pd.DataFrame()  # Data for binned calibration curves
-    cal_smooth: pd.DataFrame = pd.DataFrame()  # Data for smooth calibration curves
+    cal_bin: pd.DataFrame() = pd.DataFrame()  # Data for binned calibration curves
+    cal_smooth: pd.DataFrame() = pd.DataFrame()  # Data for smooth calibration curves
 
     # Decision curves
-    dc: pd.DataFrame = pd.DataFrame()  # Data for decision curves, including net benefit
+    dc: pd.DataFrame() = pd.DataFrame()  # Data for decision curves, such as net benefit
  
 
 def all_metrics(y_true: np.ndarray, y_pred: np.ndarray, fit: np.ndarray = None, 
@@ -59,8 +50,7 @@ def all_metrics(y_true: np.ndarray, y_pred: np.ndarray, fit: np.ndarray = None,
                 interp_step: float = 0.01, ymax_bin: list = [0.2, 1], ymax_lowess: list = [0.2, 1], 
                 global_only: bool = False, cal: bool = True, rocpr: bool = True,
                 wilson_ci: bool = False, format_long: bool = False,
-                raw_rocpr: bool = False, thr_mod: list = None, dca: bool = True,
-                print_msg: bool = True, metrics_relative_to_fit: bool = True):
+                raw_rocpr: bool = False, thr_mod: list = None, dca: bool = True):
     """Get performance metrics for a single set of outcome labels and predictions
 
     Args
@@ -80,13 +70,12 @@ def all_metrics(y_true: np.ndarray, y_pred: np.ndarray, fit: np.ndarray = None,
         rocpr        : if True, compute ROC and PR curve data
         wilson_ci    : add Wilson CI to some of the computed proportions?
         format_long  : if True, most results are given in format [index col_1, ..., index col_n, metric_name, metric_value]
-        raw_rocpr    : if True, empirical ROC and precision recall curves are included in output
+        raw_rocpr    : if True, empirical ROC and precision recall curves are saved to disk
                        False by default as can take up a lot of disk space
         thr_mod      : model thresholds to use that correspond to FIT thresholds of [2, 10, 100] when computing metrics
                        For example, one could compute thresholds for the model that yield same sensitivities as FIT >= 2, 10 , 100
                        and then include these.
-        dca          : if True, decision curve data are included in output
-        metrics_relative_to_fit : compute diagnostic metrics relative to FIT test, such as proportion reduction in referrals
+        dca          : Genderate decision curve data?
     
     Returns
         performance metrics in PerformanceData dataclass (see PerformanceData above)
@@ -110,13 +99,11 @@ def all_metrics(y_true: np.ndarray, y_pred: np.ndarray, fit: np.ndarray = None,
     # ---- Compute global performance metrics ----
 
     # Global discrimination metrics
-    if print_msg:
-        print('... Computing global discrimination metrics')
+    print('... Computing global discrimination metrics')
     perf.disc = global_discrimination_metrics(y_true, y_pred, format_long=format_long)
 
     # Global calibration metrics
-    if print_msg:
-        print('... Computing global calibration metrics')
+    print('... Computing global calibration metrics')
     if cal:
         perf.cal = global_calibration_metrics(y_true, y_pred, format_long=format_long)
     
@@ -126,111 +113,99 @@ def all_metrics(y_true: np.ndarray, y_pred: np.ndarray, fit: np.ndarray = None,
     
     # ---- Compute other performance metrics ----
 
-    # Get binary classification curve?
-    # Don't pre-compute atm as have not tested the code for it
+    # Get binary classification curve (needed for multiple computations)?
     #clf_curve = metric_at_observed_thr(y_true, y_pred, add_wilson_ci=False)
-    clf_curve = None
+    clf_curve = None  # Don't pre-compute atm as have not tested it yet; computed separately
     
     # ROC and PR curve data
     #  Note: when this is bootstrapped, indicates PPV at each level of sensitivity
-    #  but the thresholds for the FIT test and model that yield these levels of sensitivity
-    #  may be different in each sample
-    if print_msg:
-        print('... Computing ROC and PR curves')
+    #  but the threshold that produces that sensitivity is somewhat different in each sample
+    print('... Computing ROC and PR curves')
     if rocpr:
-        perf.roc, perf.roc_int, perf.spec_int = roc_data(y_true, y_pred, interp_step, 
-                                                         add_wilson_ci=wilson_ci, sens_add=sens, 
-                                                         format_long=format_long, clf_curve=clf_curve)
-        perf.pr, perf.pr_int = pr_data(y_true, y_pred, interp_step, 
-                                       add_wilson_ci=wilson_ci, sens_add=sens, 
-                                       format_long=format_long, clf_curve=clf_curve)
+        perf.roc, perf.roc_int, perf.spec_int = \
+            roc_data(y_true, y_pred, interp_step, 
+                     add_wilson_ci=wilson_ci, sens_add=sens, format_long=format_long,
+                     clf_curve=clf_curve)
+        perf.pr, perf.pr_int = \
+            pr_data(y_true, y_pred, interp_step, 
+                    add_wilson_ci=wilson_ci, sens_add=sens, format_long=format_long,
+                    clf_curve=clf_curve)
         perf.npv_int = perf.pr_int
-    if not raw_rocpr: # Remove non-interpolated ROC and PR curve data to save disk space?
+    
+    if not raw_rocpr: # Remove raw ROC and PR data (can make more elegant later)
         perf.roc = pd.DataFrame()
         perf.pr = pd.DataFrame()
 
+    # Gain in precision and reduction in tests compared to FIT at each level of sensitivity
+    # Requires FIT test values to be inputted
+    if rocpr and fit is not None:
+        print('... Computing PR gain and proportion reduction in tests')
+        if format_long:
+            pr_int = perf.pr_int
+            pr_int = pd.pivot(pr_int, index='recall', columns='metric_name', values='metric_value').reset_index()
+        else:
+            pr_int = perf.pr_int
+        pr_int = pr_int[['recall', 'precision']]
+        __, pr_fit = pr_data(y_true, fit, interp_step, add_wilson_ci=wilson_ci, sens_add=sens, format_long=False)
+        pr_fit = pr_fit[['recall', 'precision']].rename(columns={'precision': 'precision_fit'})
+        pr_gain = pr_int.merge(pr_fit, how='left')
+        pr_gain['precision_gain'] = pr_gain.precision - pr_gain.precision_fit
+        pr_gain['proportion_reduction_tests'] = pr_gain.precision_fit / pr_gain.precision - 1
+        pr_gain['test_ratio_log'] = np.log(pr_gain.proportion_reduction_tests + 1)
+        
+        if format_long:
+            value_cols = ['precision', 'precision_fit', 'precision_gain', 'proportion_reduction_tests',
+                          'test_ratio_log']
+            pr_gain = pd.melt(pr_gain, id_vars=['recall'], value_vars=value_cols, 
+                              var_name='metric_name', value_name='metric_value')
+        perf.pr_gain = pr_gain
+
+    # Metrics at sensitivity of FIT >= 10
+    #  This computes sens, spec, ppv, npv for FIT >= 10,
+    #  and corresponding quantities for each model at the same level of sensitivity as FIT >= 10.
+    #  When bootstrapping, the sensitivity will vary over samples (contrary to boostrap CI of PR curve)
+    if fit is not None:
+        print("Computing metrics at sensitivities of FIT at thresholds", thr_fit)
+        perf.thr_sens_fit, perf.thr_sens_fit_gain = \
+            metric_at_fit_sens(y_true, y_pred, fit, thr_fit=thr_fit, format_long=format_long)
+    
+    # Metrics at FIT thresholds thr_fit and corresponding model thresholds thr_mod
+    if fit is not None and thr_mod is not None:
+        print("Computing metrics at thresholds corresponding to FIT sensitivities at thresholds", thr_fit)
+        perf.thr_sens_fit2, perf.thr_sens_fit_gain2 = \
+            metric_at_fit_sens(y_true, y_pred, fit, thr_fit=thr_fit, format_long=format_long, thr_mod=thr_mod)
+
     # Metrics at predefined levels of sensitivity (e.g. 0.8, 0.9, 0.95)
-    if print_msg:
-        print("... Computing metrics at sensitivities:", sens)
     thr_sens = metric_at_sens(y_true, y_pred, sens, format_long=format_long, clf_curve=clf_curve)
     perf.thr_sens = thr_sens
-
-    # Compute metrics relative to FIT test
-    if fit is not None and metrics_relative_to_fit:
-
-        # Get difference in PPVs (delta precision) and proportion reduction in tests 
-        # for the model compared to the FIT test at each level of sensitivity
-        if rocpr:
-            if print_msg:
-                print('... Computing delta PPV and proportion reduction in tests at each sensitivity in PR-curve')
-            if format_long:
-                pr_int = perf.pr_int
-                pr_int = pd.pivot(pr_int, index='recall', columns='metric_name', values='metric_value').reset_index()
-            else:
-                pr_int = perf.pr_int
-            pr_int = pr_int[['recall', 'precision']]
-            perf.pr_gain = pr_gain(y_true, y_pred, fit, step=interp_step, sens_add=sens, format_long=True, pr_mod=pr_int)
-
-        # First, compute diagnostic metrics at sensitivities corresponding to FIT thresholds in thr_fit, using the metric_at_fit_sens function.
-        #   Aim is to compute metrics at a threshold where it captures the same number of cancers as FIT at thresholds thr_fit. 
-        #   Even if it is not possible to find a model threshold that captures the same number of cancers,
-        #   the precision-recall curve is interpolated to find a PPV at the same sensitivity as FIT,
-        #   and diagnostic metrics are derived from that. 
-        # NB. If this function is applied over bootstrap samples,
-        #   it is similar to finding a new model threshold in each bootstrap sample that captures the same number of cancers as FIT,
-        #   and so the conidence intervals for quantities like reduction in referrals relative to FIT can be very wide.
-        #   For CIs, it can be better to use the metric_at_fit_and_mod_threshold function below, 
-        #   where the model is applied always at the same threshold in each bootstrap sample.
-        #   This is closer to real-world usage, as in the real world the model would be applied at a single threshold to new data.
-        #   However, depending on the dataset, it may not be possible to find a threshold that exactly captures the same number of
-        #   cancers as FIT, and hence the function metric_at_fit_sens can still be useful.
-        thr_fit_apply = list(set(thr_fit))  # use only unique FIT threhsold values
-        if print_msg:
-            print("... Computing metrics at sensitivities corresponding to FIT threshold(s)", thr_fit_apply)
-        perf.thr_sens_fit = metric_at_fit_sens(y_true, y_pred, fit, thr_fit=thr_fit_apply, format_long=format_long)
-    
-        # Metrics at FIT thresholds thr_fit and corresponding model thresholds thr_mod
-        # The thresholds in thr_mod can be chosen such that the model captures the same number of cancers as FIT at thresholds thr_fit
-        # and in that case, the model is always applied at that threshold over bootstrap samples.
-        # This should usually be better for estimating bootstrap confidence intervals reduction in referrals for the model relative to FIT,
-        # as similar to real-world usage, the model would always be applied at the same threshold over bootstrap sammpels.
-        if thr_mod is not None:
-            # here, thr_fit may have repeated values, so that same fit thr can be compared against multiple mod thresholds in thr_mod
-            if print_msg:
-                print("... Computing metrics at FIT threshold(s)", thr_fit, "and corresponding model threshold(s)", thr_mod)
-            perf.thr_fit_mod = metric_at_fit_and_mod_threshold(y_true, y_pred, fit, thr_fit=thr_fit, thr_mod=thr_mod, format_long=format_long)
 
     # Additional metrics requiring probabilities
     if cal:
 
         # Sensitivity, specificity, PPV, NPV at risk thresholds
-        if print_msg:
-            print('... Computing metrics at thresholds of predicted risk')
+        print('... Computing metrics at thresholds of predicted risk')
         perf.thr_risk = metric_at_risk(y_true, y_pred, thr=thr_risk, format_long=format_long)
 
         # Decision curve (takes more time to compute than rest of the code)
         if dca:
-            if print_msg:
-                print('... Computing decision curves')
+            print('... Computing decision curves')
             dc = dca_table(y_true, y_pred, format_long=format_long, thr=thr_risk)
             perf.dc = dc
 
             # Decision curve for FIT >= 10
             if fit is not None:
-                if print_msg:
-                    print('... Computing decision curves for FIT')
+                print('... Computing decision curves for FIT')
                 dc = dca_table(y_true, fit >= 10, model_name='fit10', thr=thr_risk, format_long=format_long)
                 perf.dc = pd.concat(objs=[perf.dc, dc], axis=0)
 
         # Binned calibration curve data
-        if print_msg:
-            print('... Computing binned calibration curves with limits', ymax_bin)
+        print('... Computing binned calibration curves with limits', ymax_bin)
         cal_bin = pd.DataFrame()
         for strategy in ['uniform']: #['uniform', 'quantile']:
             for ymax in ymax_bin:
                 c = binned_calibration_curve(y_true, y_pred, n_bins=10, ymax=ymax, 
                                              strategy=strategy, format_long=format_long)
-                #c['fit_ub'] = 'none'
+                c['fit_ub'] = 'none'
                 cal_bin = pd.concat(objs=[cal_bin, c], axis=0)
         
         # Binned calibration curve data for restricted FIT value range
@@ -242,13 +217,12 @@ def all_metrics(y_true: np.ndarray, y_pred: np.ndarray, fit: np.ndarray = None,
         perf.cal_bin = cal_bin
 
         # LOWESS calibration curve data
-        if print_msg:
-            print('... Computing smooth calibration curves with limits', ymax_lowess)
+        print('... Computing smooth calibration curves with limits', ymax_lowess)
         cal_smooth = pd.DataFrame()
         for frac in [0.67]: #[0.33, 0.67]:
             for ymax in ymax_lowess:
                 c = lowess_calibration_curve(y_true, y_pred, ymax=ymax, frac=frac, format_long=format_long)
-                #c['fit_ub'] = 'none'
+                c['fit_ub'] = 'none'
                 cal_smooth = pd.concat(objs=[cal_smooth, c], axis=0)
 
         # LOWESS calibration curve data for restricted FIT value range
@@ -330,6 +304,9 @@ def dca_table(y_true: np.ndarray, y_prob: np.ndarray, thr: list = None, model_na
     """Table for decision curve analysis"""
 
     if thr is None:
+        #thr = np.linspace(0, 0.2, 41)  # 0.5% increment: 0, 0.005, 0.01, 0.015, ..., 0.195, 0.2
+        #thr = np.sort(np.append(thr, [0.006]))  # Add point 0.006 (0.6%)
+        #thr = np.unique(np.round(thr, 3))
         thr_low = np.arange(0, 1, 0.05)
         thr_high = np.arange(1, 51, 1)
         thr = np.append(thr_low, thr_high)
@@ -340,35 +317,24 @@ def dca_table(y_true: np.ndarray, y_prob: np.ndarray, thr: list = None, model_na
         thr = np.array(thr)
         thr = np.unique(np.round(thr, 6))
     
-    d = pd.DataFrame({'y_true': y_true, model_name: y_prob})
+    d = pd.DataFrame(zip(y_true, y_prob), columns=['y_true', model_name])
     r = dc.dca(data=d, outcome='y_true', modelnames=[model_name], thresholds=thr)
 
-    # Add other diagnostic metrics to DCA table 
-    r['pp'] = r.n * r.test_pos_rate  # num positive tests
-    r['pn'] = r.n - r.pp  # num negative tests
-    r['tp'] = r.n * r.tp_rate  # true pos count
-    r['fp'] = r.n * r.fp_rate  # false pos count
-    r['tn'] = r.n * (1 - r.prevalence) - r.fp  # true neg count
-    r['fn'] = r.n * r.prevalence - r.tp  # false neg count
-    r['test_neg_rate'] = r.pn / r.n  # proportion of negative tests
-    r['tn_rate'] = r.tn / r.n  # proportion of true negatives
-    r['fn_rate'] = r.fn / r.n  # proportion of false negatives
-    r['pp1000'] = r.test_pos_rate * 1000  # num positive tests per 1000 tests
-    r['pn1000'] = r.test_neg_rate * 1000  # num negative tests per 1000 tests
-    r['tp1000'] = r.tp_rate * 1000  # true positives per 1000 tests
-    r['fp1000'] = r.fp_rate * 1000
-    r['tn1000'] = r.tn_rate * 1000
-    r['fn1000'] = r.fn_rate * 1000
+    # Add false negative rate
+    r['fn_rate'] = r.prevalence - r.tp_rate
 
     if format_long:
-        r = pd.melt(r, id_vars=['model', 'threshold'], value_vars=None, var_name='metric_name', value_name='metric_value')
+        value_cols = ['n', 'prevalence', 'harm', 'test_pos_rate',
+                      'tp_rate', 'fp_rate', 'net_benefit', 'net_intervention_avoided',
+                      'fn_rate']
+        r = pd.melt(r, id_vars=['model', 'threshold'], value_vars=value_cols, var_name='metric_name', value_name='metric_value')
 
     return r
 
 
 def metric_at_risk(y_true: np.ndarray, y_prob: np.ndarray, thr: list = None, format_long: bool = False,
                    round_digits: int = 6):
-    """Compute basic metrics at various probability thresholds.
+    """Compute basic metrics at various risk thresholds.
     Risk means predicted probability according to model.
 
     Args
@@ -382,6 +348,7 @@ def metric_at_risk(y_true: np.ndarray, y_prob: np.ndarray, thr: list = None, for
     # The grid covers very low levels of risk from 0 to 1% with 0.05% increments
     # and higher levels of risk from 1% to 100% with 1% increments
     if thr is None:
+        #thr = np.array([0, 1, 2, 2.5, 3, 4, 5, 10, 20]) / 100
         thr_low = np.arange(0, 1, 0.05)
         thr_high = np.arange(1, 101, 1)
         thr = np.append(thr_low, thr_high)
@@ -393,7 +360,7 @@ def metric_at_risk(y_true: np.ndarray, y_prob: np.ndarray, thr: list = None, for
         thr = np.array(thr)
         if round_digits is not None:
             thr = np.round(thr, round_digits)
-        #thr = np.unique(thr)  # Don't drop repeated thresholds
+        thr = np.unique(thr)
 
     res = pd.DataFrame()
     for t in thr:
@@ -403,16 +370,26 @@ def metric_at_risk(y_true: np.ndarray, y_prob: np.ndarray, thr: list = None, for
         y_prob_bin = test.astype(int)
 
         # Get basic metrics at threshold
-        m = basic_metrics(y_true, y_prob_bin)
+        m = _basic_metrics(y_true, y_prob_bin, return_counts=False, return_all=True)
+
+        # Get number of positive and negative tests, and positive tests to detect one cancer
+        m['pp'] = m.tp + m.fp
+        m['pn'] = m.tn + m.fn
+        #m['pp_per_cancer'] = np.divide((m.tp + m.fp), m.tp, out=np.full_like(m.tp, np.nan, dtype=np.float64), where=m.tp!=0)
+        m['pp_per_cancer'] = np.divide(1, m.ppv, out=np.full_like(m.ppv, np.nan, dtype=np.float64), where=m.ppv!=0)
 
         # Store
         m = pd.DataFrame([m])
         m = m.astype(float)
+        #m = pd.DataFrame(m, columns=['metric_value'])
+        #m.index.name = 'metric_name'
+        #m = m.reset_index()
         m['thr'] = t
         res = pd.concat(objs=[res, m], axis=0)
 
     if format_long:
-        res = pd.melt(res, id_vars=['thr'], value_vars=None, var_name='metric_name', value_name='metric_value')
+        value_cols = ['sens', 'spec', 'ppv', 'npv', 'tp', 'fp', 'tn', 'fn', 'pp', 'pn', 'pp_per_cancer']
+        res = pd.melt(res, id_vars=['thr'], value_vars=value_cols, var_name='metric_name', value_name='metric_value')
 
     return res
 
@@ -478,7 +455,7 @@ def lowess_calibration_curve(y_true: np.ndarray, y_prob: np.ndarray, ymax: float
 
     mask = y_prob > ymax
     if mask.any():
-        #warnings.warn('ymax is lower than max predicted prob. Removing prob above ymax...')
+        warnings.warn('ymax is greater than max predicted prob. Removing prob above ymax...')
         y_true = y_true[~mask]
         y_prob = y_prob[~mask]
     
@@ -733,7 +710,7 @@ def interpolate_pr(df: pd.DataFrame, step: float = 0.05, sens_add: list = None, 
     if interp_thr_nonlin:
         df['thr_next'] = df.thr.bfill()  #fillna(method='bfill')  # df.tp.shift(-1)
         df['thr_prev'] = df.thr.ffill()  #fillna(method='ffill')  # df.tp.shift(1)
-        df['local_skew_thr'] = (df.thr_next - df.thr_prev) / (df.tp_next - df.tp_prev) # Threshold change per true positive
+        df['local_skew_thr'] = (df.thr_next - df.thr_prev) / (df.tp_next - df.tp_prev) # Number of false positives per true positive
         df['local_skew_thr'] = df.local_skew_thr.fillna(0)
 
     # Interpolate FP, and get precision
@@ -775,7 +752,6 @@ def interpolate_pr(df: pd.DataFrame, step: float = 0.05, sens_add: list = None, 
     # Interpolate threshold too -- as an indication where its value may lie
     if not interp_thr_nonlin:
         df['thr'] = df[['thr']].interpolate('linear')
-        #msg = 'Thr is not interpolated atm.'
 
     # Retain only interpolated data
     df = df.loc[df.interp == True]
@@ -795,54 +771,28 @@ def interpolate_pr(df: pd.DataFrame, step: float = 0.05, sens_add: list = None, 
     # For checking the results
     return df
 
-
-def pr_gain(y_true: np.ndarray, y_pred: np.ndarray, fit: np.ndarray, step: float = 0.025, 
-            add_wilson_ci: bool = False, sens_add: list = None, format_long: bool = False,
-            pr_mod: pd.DataFrame = None):
-    """Compute gain in PPV and proportion reduction in number of positive tests,
-    at each level of sensitivity in the precision-recall curve
-    NB. step must be the same interpolation step size used when interpolating the PR curve
-    of the model """
-
-    # Interpolated PR-curve data for the model
-    if pr_mod is None:
-        __, pr_mod = pr_data(y_true, y_pred, step, add_wilson_ci=add_wilson_ci, sens_add=sens_add, format_long=False)
-    pr_mod = pr_mod[['recall', 'precision']].drop_duplicates()
-
-    # Interpolated PR curve data for the FIT test
-    __, pr_fit = pr_data(y_true, fit, step, add_wilson_ci=add_wilson_ci, sens_add=sens_add, format_long=False)
-    pr_fit = pr_fit[['recall', 'precision']].rename(columns={'precision': 'precision_fit'}).drop_duplicates()
-
-    # Combine model and FIT data
-    if not (pr_fit.recall.sort_values() == pr_mod.recall.sort_values()).all():
-        raise ValueError("Sensitivities in pr_fit and pr_mod are not the same")
-    g = pr_mod.merge(pr_fit, how='left')
-    g['delta_ppv'] = g.precision - g.precision_fit
-    g['proportion_reduction_tests'] = g.precision_fit / g.precision - 1
-
-    if format_long:
-        g = pd.melt(g, id_vars=['recall'], value_vars=None, var_name='metric_name', value_name='metric_value')
-    return g
-
 #endregion
 
 # ~ Metrics at selected levels of sensitivity: those corresponding to FIT thresholds, and other ~
 #region
 def metric_at_fit_sens(y_true: np.ndarray, y_pred: np.ndarray, fit: np.ndarray, 
-                       thr_fit: list = [2, 10, 100], format_long: bool = False):
+                       thr_fit: list = [2, 10, 100], model_name: str = None, format_long: bool = False,
+                       thr_mod: list = None):
     """Compute common performance metrics for the FIT test at threshold thr_fit
     and for a prediction model at the same level of sensitivity as FIT >= thr_fit
 
     If thr_mod is specified, the metrics are computed at these thresholds for the model.
 
     Args
-        y_true : true outcome labels (binary), e.g. 0 = no cancer, 1 = cancer
-        y_pred : predicted scores according to model (do not have to be probabilities)
-        fit : FIT test values (must be same size as y_true and y_pred)
-        thr_fit : threshold to apply for the FIT test
-        format_long : format results in long format?
+        y_true: true outcome labels (binary), e.g. 0 = no cancer, 1 = cancer
+        y_pred: predicted scores according to model (do not have to be probabilities)
+        fit: FIT test values (must be same size as y_true and y_pred)
+        thr_fit: threshold to apply for the FIT test
+        format_long: format results in long format?
+        thr_mod: thresholds to apply for the model, corresponding to each threshold in thr_fit
     Output
-        out: DataFrame with columns 'sens' (sensitivity), 'spec' (specificity),
+        out: DataFrame with columns 'model' (model name), 
+             'sens' (sensitivity), 'spec' (specificity),
              'ppv' (positive predictive value), 'npv' (negative predictive value),
              'tp' (true positive count), 'fp' (false positive count),
              'tn' (true negative count), 'fn' (false negative count),
@@ -853,46 +803,84 @@ def metric_at_fit_sens(y_true: np.ndarray, y_pred: np.ndarray, fit: np.ndarray,
     will be interpolated to the same point of sensitivity as the FIT data
     using a method of Davis & Goadrich, 2006, "The relationship between Precision-Recall and ROC curves"
     """
+    if thr_mod is not None:
+        if not len(thr_fit) == len(thr_mod):
+            raise ValueError("If thr_mod is specified, must have as many values as thr_fit")
+        thr_mod_use = thr_mod
+    else:
+        thr_mod_use = [None] * len(thr_fit)
+
+    if model_name is None:
+        model_name = 'model'
     
     out = pd.DataFrame()
-    for t in thr_fit:
+    out_gain = pd.DataFrame()
 
-        # Compute performance metrics for FIT at threshold t
-        mfit = basic_metrics(y_true, fit >= t)
+    for t, t_mod in zip(thr_fit, thr_mod_use):
+
+        # A. Get performance of FIT at threshold (e.g. FIT >= 10)
+        mfit = _basic_metrics(y_true, fit >= t, return_counts=False, return_all=True)
         mfit['thr'] = t
         mfit['interp'] = 0
+        mfit['pp'] = mfit.tp + mfit.fp  # Total num of positive tests
+        mfit['pn'] = mfit.tn + mfit.fn  # Total num of negative tests
         sens_fit = mfit.sens.item()
 
-        # Compute performance metrics for model at same sensitivity
-        mmod = metric_at_single_sens(y_true, y_pred, sens_fit)
-
-        # Concatenate
-        mfit.index = mfit.index + '_fit'
-        mmod.index = mmod.index + '_mod'
-        m = pd.concat(objs=[mfit, mmod])
-        m = pd.DataFrame(m).transpose()
-
-        # Compute differences in PPV, sensitivities and true positive counts
-        m['delta_ppv'] = m.ppv_mod - m.ppv_fit
-        m['delta_sens'] = m.sens_mod - m.sens_fit
-        m['delta_tp'] = m.tp_mod - m.tp_fit
-        
-        # Reduction in number of positive tests
-        if m.pp_fit.item() == 0:
-            m['proportion_reduction_tests'] = np.nan
+        # B. Get performance metrics for the model at same level of sens 
+        if thr_mod is None:
+            mmod = metric_at_single_sens(y_true, y_pred, sens_fit)
         else:
-            m['proportion_reduction_tests'] = (m.pp_mod - m.pp_fit) / m.pp_fit
+            mmod = _basic_metrics(y_true, y_pred >= t_mod, return_counts=False, return_all=True)
+            mmod['thr'] = t_mod
+            mmod['interp'] = 0
+            mmod['max_sens'] = np.nan
+        mmod['pp'] = mmod.tp + mmod.fp  # Total num of positive tests
+        mmod['pn'] = mmod.tn + mmod.fn  # Total num of negative tests
 
-        # Store
+        # Concatenate A and B
+        m = pd.DataFrame([mfit, mmod]).reset_index(drop=True)
+        m['thr_fit'] = mfit.thr
+        m = m.astype(float)
+        m['model'] = ['fit', model_name]
+        cols_reorder = ['thr_fit', 'model'] + [c for c in m.columns if c not in ['thr_fit', 'model']]
+        m = m[cols_reorder]
         out = pd.concat(objs=[out, m], axis=0)
-    
-    out = out[['thr_fit'] + [c for c in out.columns if c not in ['thr_fit']]]
+
+        # Delta A and B
+        delta_ppv = mmod.ppv - mfit.ppv
+        if thr_mod is None:
+            test_red = mfit.ppv / mmod.ppv - 1  # As sensitivity is the same; works better when data was interpolated
+        else:
+            test_red = (mmod.pp - mfit.pp) / mfit.pp  # As sensitivity is not the same
+        test_ratio_log = np.log(test_red + 1)
+        delta_sens = mmod.sens - mfit.sens
+
+        m2 = {'thr_fit': mfit.thr, 'model': model_name, 
+              'precision_gain': delta_ppv, 'proportion_reduction_tests': test_red, 
+              'test_ratio_log': test_ratio_log,
+              'delta_sens': delta_sens,
+              'ppv_mod': mmod.ppv, 'ppv_fit': mfit.ppv, 
+              'pp_mod': mmod.pp, 'pp_fit': mfit.pp,
+              'sens_mod': mmod.sens, 'sens_fit': mfit.sens}
+        m2 = pd.DataFrame(m2, index=[0])
+        out_gain = pd.concat(objs=[out_gain, m2], axis=0)
+
+    # Get number of positive and negative tests, and positive tests to detect one cancer
+    out['pp_per_cancer'] = np.divide(1, out.ppv, out=np.full_like(out.ppv, np.nan, dtype=np.float64), where=out.ppv!=0)
 
     if format_long:
-        out = pd.melt(out, id_vars=['thr_fit'], value_vars=None, 
-                      var_name='metric_name', value_name='metric_value')
+        value_cols = ['sens', 'spec', 'ppv', 'npv', 'tp', 'fp', 'tn', 'fn', 'thr', 'interp', 'max_sens',
+                      'pp', 'pn', 'pp_per_cancer'] 
+        out = pd.melt(out, id_vars=['thr_fit', 'model'], value_vars=value_cols, 
+                     var_name='metric_name', value_name='metric_value')
 
-    return out
+        value_cols = ['precision_gain', 'proportion_reduction_tests', 'test_ratio_log',
+                      'delta_sens',
+                      'ppv_mod', 'ppv_fit', 'pp_mod', 'pp_fit', 'sens_mod', 'sens_fit'] 
+        out_gain = pd.melt(out_gain, id_vars=['thr_fit', 'model'], value_vars=value_cols, 
+                           var_name='metric_name', value_name='metric_value')
+
+    return out, out_gain
 
 
 def metric_at_sens(y_true: np.ndarray, y_pred: np.ndarray, sens: list = [0.8, 0.9, 0.95, 0.99],
@@ -901,52 +889,60 @@ def metric_at_sens(y_true: np.ndarray, y_pred: np.ndarray, sens: list = [0.8, 0.
     For a full list of metrics, see metric_at_single_sens
     """
     thr_sens = pd.DataFrame()
+
     for s in sens:
+        print('... Computing metrics at sensitivity', s)
         m = metric_at_single_sens(y_true, y_pred, target_sens=s, clf_curve=clf_curve)
         m = pd.DataFrame([m])
+        
+        # Get number of positive and negative tests, and positive tests to detect one cancer
+        m['pp'] = m.tp + m.fp
+        m['pn'] = m.tn + m.fn
+        m['pp_per_cancer'] = np.divide(1, m.ppv, out=np.full_like(m.ppv, np.nan, dtype=np.float64), where=m.ppv!=0)
+
         thr_sens = pd.concat(objs=[m, thr_sens], axis=0)
     thr_sens = thr_sens.reset_index(drop=True)
 
     if format_long:
-        thr_sens = pd.melt(thr_sens, id_vars=['sens'], value_vars=None, var_name='metric_name', value_name='metric_value')
+        value_cols = ['thr', 'spec', 'ppv', 'npv', 'tp', 'fp', 'tn', 'fn', 'interp', 'max_sens', 'pp', 'pn', 'pp_per_cancer']
+        thr_sens = pd.melt(thr_sens, id_vars=['sens'], value_vars=value_cols, var_name='metric_name', value_name='metric_value')
 
     return thr_sens
 
 
-def metric_at_fit_and_mod_threshold(y_true: np.ndarray, y_pred: np.ndarray, fit_val: np.ndarray, 
-                                    thr_mod: list = [0.03, 0.03], thr_fit: list = [2, 10], 
-                                    format_long: bool = False):
+def core_metric_at_threshold(y_true, y_pred, fit_val, thr_mod = 0.006, thr_fit = 10, long_format = False):
     """Compute core performance metrics for the model compared to FIT test,
     when model is used at threshold thr_mod and FIT is used at threshold thr_fit 
     """
-    if len(thr_mod) != len(thr_fit):
-        raise ValueError("thr_fit and thr_mod must be lists with the same number of elements")
 
-    pmod = metric_at_risk(y_true, y_pred, thr=thr_mod, round_digits=None)
-    pfit = metric_at_risk(y_true, fit_val, thr=thr_fit, round_digits=None)
+    pmod = metric_at_risk(y_true, y_pred, thr=[thr_mod], round_digits=None)
+    pfit = metric_at_risk(y_true, fit_val, thr=[thr_fit], round_digits=None)
+    test_red = ((pmod.pp - pfit.pp) / pfit.pp).item()
+    delta_sens = (pmod.sens - pfit.sens).item()
 
-    pmod.columns = [c + '_mod' for c in pmod.columns]
-    pfit.columns = [c + '_fit' for c in pfit.columns]
-    m = pd.concat(objs=[pfit, pmod], axis=1)
+    g = pd.DataFrame({'proportion_reduction_tests': test_red, 
+                      'pp_mod_1000': pmod.pp / (pmod.pp + pmod.pn) * 1000,
+                      'pp_fit_1000': pfit.pp / (pfit.pp + pfit.pn) * 1000,
+                      'delta_sens': delta_sens, 
+                      'sens_mod': pmod.sens,
+                      'sens_fit': pfit.sens,
+                      'thr_mod': thr_mod,
+                      'thr_fit': thr_fit,
+                      'pp_mod': pmod.pp,
+                      'pp_fit': pfit.pp,
+                      'n_test': len(y_true),
+                      'n_crc': y_true.sum(),
+                      'prevalence': y_true.mean()})
+    if long_format: 
+        g = pd.melt(g, value_name='metric_value', var_name='metric_name')
 
-    m['proportion_reduction_tests'] = (m.pp_mod - m.pp_fit) / m.pp_fit
-    m.loc[m.pp_fit == 0, 'proportion_reduction_tests'] = np.nan
-    
-    m['delta_sens'] = m.sens_mod - m.sens_fit
-    m['delta_tp'] = m.tp_mod - m.tp_fit
-    m = m[['thr_fit', 'thr_mod'] + [c for c in m.columns if c not in ['thr_fit', 'thr_mod']]]
-
-    if format_long: 
-        m = pd.melt(m, id_vars=['thr_fit', 'thr_mod'], value_vars=None, var_name='metric_name', value_name='metric_value')
-        m = m.sort_values(by=['thr_fit', 'thr_mod'])
-
-    return m
+    return g
 
 #endregion
 
 # ~ Helper functions ~
 #region
-def basic_metrics(y_true: np.ndarray, y_pred: np.ndarray):
+def _basic_metrics(y_true, y_pred, return_counts=False, return_all=False):
     """Compute basic performance metrics for a single thresholded prediction.
 
     Args
@@ -954,50 +950,34 @@ def basic_metrics(y_true: np.ndarray, y_pred: np.ndarray):
         y_pred: predicted scores (thresholded, binary)
 
     Returns
-        out : pd.Series containing various quantities
-            tp, fp : true and false positive counts
-            tn, fn : true and false negative counts
-            ppv, npv : positive and negative predictive values
-            sens, spec : sensitivity and specificity
-            pp, pn : total number of positives and negatives
-            pp_per_cancer : number needed to scope (reciprocal of ppv)
+        If return_counts is True and return_all is False, returns TP, FP, TN, FN counts
+        If return_counts is False and return_all is False, returns sensitivity, specficity, PPV, NPV
+        If return counts is False and return_all is True, returns
+        sensitivity, specficity, PPV, NPV, TP, FP, TN, FN 
     """
-
+    if return_counts and return_all:
+        raise ValueError("return_counts and return_all must not be True at the same time")
+    
     # Get tp, fp, tn, fn counts
     tn, fp, fn, tp = sm.confusion_matrix(y_true, y_pred).ravel()
 
-    # Convert to float datatype just in case
-    tp, fp, tn, fn = [a.astype(float) for a in [tp, fp, tn, fn]]  
+    # To numpy array and float, allowing quantities computed below to be nan in edge cases
+    tp, fp, tn, fn = [np.array(a).astype(float) for a in [tp, fp, tn, fn]]  
 
     # Compute sensitivity, specificity, PPV, NPV
-    sens = np.divide(tp, tp + fn, out=np.full_like(tp, np.nan, dtype=np.float64), where=(tp + fn) != 0).item()
-    ppv = np.divide(tp, tp + fp, out=np.full_like(tp, np.nan, dtype=np.float64), where=(tp + fp) != 0).item()
-    spec = np.divide(tn, tn + fp, out=np.full_like(tn, np.nan, dtype=np.float64), where=(tn + fp) != 0).item()
-    npv = np.divide(tn, tn + fn, out=np.full_like(tn, np.nan, dtype=np.float64), where=(tn + fn) != 0).item()
-    
-    # Compute derived quantities
-    pp = tp + fp  # Total number of positive tests
-    pn = tn + fn  # Total number of negative tests
-    pp_per_cancer = np.divide(1, ppv, 
-                              out=np.full_like(ppv, np.nan, dtype=np.float64), 
-                              where=ppv!=0).item()  # Number needed to scope (e.g. num pos tests to detect one cancer)
+    sens = np.divide(tp, tp + fn, out=np.full_like(tp, np.nan, dtype=np.float64), where=(tp + fn) != 0)
+    ppv = np.divide(tp, tp + fp, out=np.full_like(tp, np.nan, dtype=np.float64), where=(tp + fp) != 0)
+    spec = np.divide(tn, tn + fp, out=np.full_like(tn, np.nan, dtype=np.float64), where=(tn + fp) != 0)
+    npv = np.divide(tn, tn + fn, out=np.full_like(tn, np.nan, dtype=np.float64), where=(tn + fn) != 0)
 
-    # Metrics per thousand tests
-    n = len(y_true)
-    pp1000 = pp / n * 1000
-    pn1000 = pn / n * 1000
-    tp1000 = tp / n * 1000
-    fp1000 = fp / n * 1000
-    tn1000 = tn / n * 1000
-    fn1000 = fn / n * 1000
-
-    out = pd.Series({'sens': sens, 'spec': spec, 'ppv': ppv, 'npv': npv, 
-                     'tp': tp, 'fp': fp, 'tn': tn, 'fn': fn, 'pp': pp, 'pn': pn,
-                     'pp_per_cancer': pp_per_cancer, 
-                     'pp1000': pp1000, 'pn1000': pn1000,
-                     'tp1000': tp1000, 'fp1000': fp1000, 
-                     'tn1000': tn1000, 'fn1000': fn1000})
-    return out
+    if return_counts:
+        return tp, fp, tn, fn
+    elif return_all:
+        out = pd.Series([sens, spec, ppv, npv, tp, fp, tn, fn], 
+                            index=['sens', 'spec', 'ppv', 'npv', 'tp', 'fp', 'tn', 'fn'])
+        return out
+    else:
+        return sens, spec, ppv, npv
 
 
 def metric_at_observed_thr(y_true: np.ndarray, y_pred: np.ndarray, add_wilson_ci: bool = False):
@@ -1066,59 +1046,40 @@ def metric_at_single_sens(y_true: np.ndarray, y_pred: np.ndarray, target_sens: f
         it can be more convenient to use the pr_data function.
     """
 
-    # Get binary classification curve
+    # Compute metrics at same level of sens as thresholded FIT
     if clf_curve is None:
         m = metric_at_observed_thr(y_true, y_pred, add_wilson_ci=False)
     else:
         m = clf_curve
-    
-    # Get largest sensitivity that is not 1 (not good to interpolate sens greater than that)
-    max_sens = m.loc[m.sens < 1.0].sens.max() 
+    max_sens = m.loc[m.sens < 1.0].sens.max() # Get largest sensitivity that is not 1 (not good to interpolate sens greater than that)
 
-    # If the classification curve contains the desired sensitivity, use it
+    # If performance data of model has the same sensitivity, use this
     test = m.sens == target_sens
     if test.any():  
         mmod = m.loc[test].sort_values(by='fp', ascending=True).iloc[0]
         mmod['interp'] = 0
     else:  
-        # If classification curve has the desired sensitivity up to 4 decimal points, use this
+        # If performance data of model has the same sensitivity up to 4 decimal points, use this
         test2 = m.sens.round(round_digits) == np.round(target_sens, round_digits)
         if test2.any():  
             mmod = m.loc[test2].sort_values(by='fp', ascending=True).iloc[0]
             mmod['interp'] = 0
         
-        # If classification curve does not have the desired sensitivity up to 4 decimal points: interpolate
+        # If performance data of model does not have the same sensitivity up to 4 decimal points: interpolate
         else:   
             sens_new = np.round(target_sens, round_digits)
-            m_interp = m.rename(columns={'sens': 'recall', 'ppv': 'precision'})
-            m_interp['p'] = m_interp.tp + m_interp.fn
-            m_interp['neg'] = m_interp.tn + m_interp.fp
-            mmod = interpolate_pr(df=m_interp, recall=[sens_new], interp_thr_nonlin=False)
+            m_tmp = m.rename(columns={'sens': 'recall', 'ppv': 'precision'})
+            m_tmp['p'] = m_tmp.tp + m_tmp.fn
+            m_tmp['neg'] = m_tmp.tn + m_tmp.fp
+            mmod = interpolate_pr(df=m_tmp, recall=[sens_new])
             mmod = mmod.rename(columns={'recall': 'sens', 'precision': 'ppv'})
             mmod = mmod[['thr', 'sens', 'spec', 'ppv', 'npv', 'tp', 'fp', 'tn', 'fn']]
             mmod['interp'] = 1
             mmod = mmod.squeeze()
-    
-    mmod = add_derived_metrics(mmod)
+
     mmod['max_sens'] = max_sens
     mmod.name = 0
     return mmod
-
-
-def add_derived_metrics(mmod: pd.Series):
-    tp, fp, tn, fn, ppv = mmod.tp, mmod.fp, mmod.tn, mmod.fn, mmod.ppv
-    mmod['pp'] = tp + fp
-    mmod['pn'] = tn + fn
-    mmod['pp_per_cancer'] = np.divide(1, ppv, out=np.full_like(ppv, np.nan, dtype=np.float64), where=ppv!=0).item()
-    n = tp + fp + tn + fn
-    mmod['pp1000'] = mmod.pp / n * 1000
-    mmod['pn1000'] = mmod.pn / n * 1000
-    mmod['tp1000'] = tp / n * 1000
-    mmod['fp1000'] = fp / n * 1000
-    mmod['tn1000'] = tn / n * 1000
-    mmod['fn1000'] = fn / n * 1000
-    return mmod
-
 
 #endregion
 
