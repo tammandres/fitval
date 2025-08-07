@@ -30,6 +30,8 @@ pip install -e .
 
 **At a glance**: 
 
+`./dataprep_fit` : contains code for the initial steps of processing the FIT data (extracting clinical symptoms and identifying tests done in the stool pot), and code for identifying pathology reports that discuss current colorectal cancer. Once tehese steps were complete, the functions in the `./dataprep_fitval` directory were used to prepare a dataset for analysis.
+
 `./dataprep_fitval` : contains functions that were used to prepare the hospital data for analysis (e.g. to clean the blood test values and extract the blood test value closest to the first FIT test), and to summarise changes in the patient population over time (e.g. to plot the proportion of patients with a positive FIT test over time). NB - these scripts were originally used as a separate code repository. The `./dataprep_fitval` directory thus includes its own requirements.txt file and installation instructions in README.md.
 
 `./fitval` : contains helper functions needed for the analysis, such as functions that compute performance metrics;
