@@ -73,6 +73,8 @@ pip install -e .
 
 `./runs/colofit_hm_vs_oc.py` : explore how the predicted risk changes when FIT values are increased above 400 while other predictors are set at median. Provides insight into how predicted risks may differ for patients who did their FIT with HMJack rather than OC censor.
 
+`./runs/colofit_performance_orig.py` : visualise COLOFIT performance in Nottingham and Oxford data over similar time periods
+
 `./runs/colofit_reduction_external-local.py` : computes reduction in referrals for each time period, using different methods of computing the risk score threshold that captures the same number of cancers as FIT test at threshold >= 10. The methods are: estimating the threshold on Nottingham data; estimating the threshold locally (in Oxford data) on the current time period; estimating the threshold locally on the previous time period (to mimic real-world usage).
 
 `./runs/colofit_reduction-by-predictor_external-local.py` : computes reduction in referrals for each time period under different methods of computing the risk score threshold, but this time also including different subsets of the linear predictor to evaluate how the predictor variables contribute to reduction in referrals over time.
