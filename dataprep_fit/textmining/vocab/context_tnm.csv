@@ -1,0 +1,12 @@
+category,pat,pat_type,side,ex_left,ex_right,distance,comment
+historic,(compari|histor|previous|predates|prior|known),wordstart,left,,stoph|stopr,40,"e.g. 'Stage T1 in 1990' but not 'History of X, presnting with stage T1'"
+historic,clinical (details|history|information),wordstart,left,,stoph,80,"e.g. 'clinical details: stage T1'"
+historic,(19\d\d|20\d\d),word,left,stoph,stoph|stopr,40,"e.g. 'stage T1 in 1990' but not 'stage T1 (WHO 1990)' and not 'TNM 1990 edition: stage T1'"
+historic,(jan|feb|mar|apr|in may|may 19\d\d|may 20\d\d|jun|jul|aug|sep|oct|nov|dec),word,left,stoph,stoph|stopr,40,
+historic,(january|february|march|april|in may|may 19\d\d|may 20\d\d|june|july|august|september|october|november|december),word,left,stoph,stoph|stopr,40,
+historic,(19\d\d|20\d\d),word,right,stoph|stopr,,40,
+historic,(jan|feb|mar|apr|in may|may 19\d\d|may 20\d\d|jun|jul|aug|sep|oct|nov|dec),word,right,stoph|stopr,,40,
+historic,(january|february|march|april|in may|may 19\d\d|may 20\d\d|june|july|august|september|october|november|december),word,right,stoph|stopr,,40,
+general,(individuals|patients|subjects) with,word,both,,,40,"not implemented in code for TNM yet"
+stoph,who|edition|present,wordstart,,,,,"e.g. helps to apply 'history' for X and not Y in 'history of X, presenting with Y'"
+stopr,(although|apart|aside|but|except|if|however|nevertheless|though|yet),word,,,,,
