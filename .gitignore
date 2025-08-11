@@ -7,7 +7,7 @@ tmp_*/
 # Analysis outputs and data
 /out/
 #/data/
-/results/
+#/results/
 /airlock
 #/tests/test*/
 .RData
