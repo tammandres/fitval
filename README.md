@@ -5,7 +5,7 @@ Davies, and Brian D Nicholson; and submitted to BMC Medicine.
 
 The repository serves two goals: 
 
-(1) To contain a snapshot of the code that was used to produce the outputs included in the publication. Some of this code cannot be run externally, because the hospital data that it is meant to be run on cannot be shared. The snapshot can be found in the release "manuscript": https://github.com/tammandres/fitval/releases/tag/manuscript
+(1) To contain a snapshot of the code that was used to produce the outputs included in the publication. Some of this code cannot be run externally, because the hospital data that it is meant to be run on cannot be shared. The snapshot can be found in the release "manuscript": https://github.com/tammandres/fitval/releases/tag/v1.0.0-manuscript
 
 (2) To facilitate the evaluation of FIT-test based prediction models in the future. The current release contains a few improvements to the code, and examples of how this repository can be used to evaluate a prediction model on a new dataset.
 
