@@ -1,7 +1,7 @@
-# External validation of the COLOFIT colorectal cancer risk prediction model in the Oxford dataset
+# Validation of FIT-test based prediction models for colorectal cancer
 
 This repository accompanies the publication `External validation of the COLOFIT colorectal cancer risk prediction model in the Oxford-FIT dataset: the importance of population characteristics and clinically relevant evaluation metrics` authored by Andres Tamm, Brian Shine, Tim James, Jaimie Withers, Hizni Salih, Theresa Noble, Kinga A. Várnai, James E. East, Gary Abel, Willie Hamilton, Colin Rees, Eva JA Morris, Jim
-Davies, and Brian D Nicholson; and submitted to BMC Medicine.
+Davies, and Brian D Nicholson; and submitted to BMC Medicine. 
 
 The COLOFIT colorectal cancer risk prediction model uses the faecal immunochemical test (FIT) results, gender, age and two blood test results to produce a risk score for colorectal cancer. The model was developed in Nottingham, using data of patients who had symptoms of cancer and who were offered the FIT test by their GP.
 
@@ -66,7 +66,7 @@ metrics, metrics_reformat = boot_reduction_in_referrals(data_path, save_path, mo
 # see ./examples/run.py for more comments
 ```
 
-It is more efficient to run the code on a dataframe that already contains model predictions, as that data can be reused in each bootstrap sample. The only reason to apply prediction model to data in each bootstrap sample is when data has missing values. In that case, the data is imputed in each sample, and a model is applied to imputed datasets in each sample. This, however, will also be more time consuming.
+The code can also be run on data with missing values, in which case the `get_model` function needs to be specified in `./fitval/models.py`. In that case, the data will be imputed within in each bootstrap sample and the prediction model applied to the bootstrap sample. Alternatively, a suitable missing data model could be trained on a subset of data that is not used for evaluating the model, and then applied to a held-out subset which will be used for evaluating the model. This would mimic real-world usage in a missing data scenario, and the held-out subset could be used for evaluating the imputer-model combination in the same way as illustrated above.
 
 
 ## Overview of files 
