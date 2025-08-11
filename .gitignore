@@ -9,7 +9,7 @@ tmp_*/
 /data/
 /results/
 /airlock
-/tests/test*/
+#/tests/test*/
 .RData
 .Rhistory
 

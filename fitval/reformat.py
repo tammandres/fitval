@@ -1,72 +1,62 @@
 """Reformat output tables"""
-from fitval.models import model_labels
-from fitval.boot import DISC_CI, CAL_CI, RISK_CI, SENS_CI, SENS_FIT_CI, SENS_FIT_GAIN_CI, DC_CI, SENS_FIT_2_CI, SENS_FIT_GAIN_2_CI, PR_GAIN_CI
-# from fitval.strata import DISC_STRATA, CAL_STRATA
+from constants import DISC_CI, CAL_CI, RISK_CI, SENS_CI, SENS_FIT_CI, DC_CI, SENS_FIT_2_CI, PR_GAIN_CI
+from constants import DISC_PAPER, CAL_PAPER, RISK_PAPER, SENS_PAPER, SENS_FIT_PAPER, SENS_FIT_PAPER2, DC_PAPER, SENS_GAIN_PAPER
 import pandas as pd
-import numpy as np
-import re
 from pathlib import Path
 
 
-# Reformatted discrimination, calibration, net benefit tables
-DISC_PAPER = 'reformat_discrimination.csv'
-CAL_PAPER = 'reformat_calibration_metrics.csv'
-RISK_PAPER = 'reformat_risk.csv'
-RISK1000 = 'reformat_risk1000.csv'
-SENS_PAPER = 'reformat_sens.csv'
-SENS_GAIN_PAPER = 'reformat_sens_gain.csv'
-SENS_FIT_PAPER = 'reformat_sens_fit.csv'
-SENS_FIT_GAIN_PAPER = 'reformat_sens_fit_gain.csv'
-SENS_FIT_PAPER2 = 'reformat_sens_fit2.csv'
-SENS_FIT_GAIN_PAPER2 = 'reformat_sens_fit_gain2.csv'
-DC_PAPER = 'reformat_dca.csv'
+# Metric names
+disc_metric_names = {
+    'ap': 'Average precision (%)', 
+    'auroc': 'c-statistic (%)'
+}
 
-# Reformatted tables for metrics in strata
-DISC_STRATA_PAPER = 'reformat_discrimination_strata.csv'
-CAL_STRATA_PAPER = 'reformat_calibration_metrics_strata.csv'
+cal_metric_names = {
+    'event_rate': 'Event rate (%)', 
+    'mean_risk': 'Mean risk (%)',
+    'oe_ratio': 'O/E ratio', 
+    'log_intercept': 'Log intercept', 
+    'log_slope': 'Log slope'
+}
 
-# Model groups
-model_group = {'fit-lowess': 'fit', 
-               'fit10': 'fit',
-               'fit-spline': 'fit',
-               'fit-ebm': 'fit',
-               'fit-age': 'fit-age', 
-               'fit-age-sex': 'fast',
-               
-               'nottingham-fit': 'nott',
-               'nottingham-fit-age': 'nott',
-               'nottingham-fit-age-sex': 'nott',
+diag_metric_names = {
+    'sens': 'Sensitivity (%)', 
+    'spec': 'Specificity (%)', 
+    'npv':'NPV (%)', 
+    'ppv': 'PPV (%)',
+    'pp': 'Positive tests', 
+    'pp_per_cancer': 'Positive tests per cancer', 
+    'pn': 'Negative tests',
+    'tp': 'Detected cancers', 
+    'fp': 'False positive tests', 
+    'tn': 'True negative tests', 
+    'fn': 'Missed cancers',
+    'pp1000': 'Positive tests per 1000 tests', 
+    'pn1000': 'Negative tests per 1000 tests',
+    'tp1000': 'Detected cancers per 1000 tests', 
+    'fp1000': 'False positive tests per 1000 tests', 
+    'tn1000': 'True negative tests per 1000 tests', 
+    'fn1000': 'Missed cancers per 1000 tests',
+}
 
-               'nottingham-lr': 'nott', 
-               'nottingham-lr-boot': 'nott',
-               'nottingham-cox': 'nott',
-               'nottingham-cox-boot': 'nott',
+other_metric_names = {
+    'model_name': 'Model',
+    'thr_fit': 'FIT threshold (ug/g)',
+    'thr_mod': 'Model threshold (%)',
+    'thr': 'Model threshold (%)',
+    'delta_ppv': 'Delta PPV (model minus FIT)', 
+    'delta_sens': 'Delta sensitivity (model minus FIT)', 
+    'delta_tp': 'Delta TP (model minus FIT)',
+    'proportion_reduction_tests': 'Percent reduction in number of positive tests'
+}
 
-               'nottingham-lr-quant': 'nott-recal', 
-               'nottingham-lr-3.5': 'nott-recal',
-               'nottingham-lr-platt': 'nott-recal',
-               'nottingham-lr-iso': 'nott-recal',
+diag_metric_names_fit = {metric + '_fit': name + ' (FIT)' for metric, name in diag_metric_names.items()}
+diag_metric_names_mod = {metric + '_mod': name + ' (model)' for metric, name in diag_metric_names.items()}
 
-               'nottingham-cox-quant': 'nott-recal', 
-               'nottingham-cox-3.5': 'nott-recal',
-               'nottingham-cox-platt': 'nott-recal',
-               'nottingham-cox-iso': 'nott-recal',
-
-               'nottingham-fit-platt': 'nott-recal',
-               'nottingham-fit-quant': 'nott-recal',
-               'nottingham-fit-3.5': 'nott-recal',
-
-               'nottingham-fit-age-sex-platt': 'nott-recal',
-               'nottingham-fit-age-sex-quant': 'nott-recal',
-               'nottingham-fit-age-sex-3.5': 'nott-recal',
-
-               'nottingham-fit-age-platt': 'nott-recal',
-               'nottingham-fit-age-quant': 'nott-recal',
-               'nottingham-fit-age-3.5': 'nott-recal',
-
-               'all': 'net_all',
-               'none': 'net_none'
-               }
+metric_names = {}
+for d in [disc_metric_names, cal_metric_names, other_metric_names, diag_metric_names, diag_metric_names_fit, diag_metric_names_mod]:
+    for key, value in d.items():
+        metric_names[key] = value
 
 
 # ~ Helpers ~
@@ -87,29 +77,9 @@ def check_nan(df):
 
 
 # ~ Main functions ~
-def reformat_disc_cal(data_path: Path, save_path: Path, model_order: list = None):
+def reformat_disc_cal(data_path: Path, save_path: Path, model_labels: dict = None):
     print('Reformatting discrimination and calibration tables...')
 
-    if model_order is None:
-        model_order = [
-                       'fit', 'fit10', 'fit-spline', 'fit-ebm', 'fit-lowess', 'fit-age', 'fit-age-sex',
-                       
-                       # Nottingham FIT, age, sex moels
-                       'nottingham-fit', 'nottingham-fit-age', 'nottingham-fit-age-sex',
-
-                       # Nottingham 
-                       'nottingham-lr', 'nottingham-lr-boot', 'nottingham-cox', 'nottingham-cox-boot',
-                      
-                        # Recalibrated models
-                        'nottingham-fit-3.5', 'nottingham-fit-platt', 'nottingham-fit-quant',
-                        'nottingham-fit-age-platt', 'nottingham-fit-age-quant', 'nottingham-fit-age-3.5',
-                        'nottingham-fit-age-sex-platt', 'nottingham-fit-age-sex-quant', 'nottingham-fit-age-sex-3.5',
-                        'nottingham-lr-quant', 'nottingham-lr-3.5', 'nottingham-lr-platt', 'nottingham-lr-iso',
-                        'nottingham-cox-quant', 'nottingham-cox-3.5', 'nottingham-cox-platt', 'nottingham-cox-iso',
-
-                        'all', 'none'
-                       ]
-    
     # ---- 1. Global discrimination metrics ----
     #region
     df = pd.read_csv(data_path / DISC_CI)
@@ -124,22 +94,14 @@ def reformat_disc_cal(data_path: Path, save_path: Path, model_order: list = None
     df = df.pivot(index='model_name', columns='metric_name', values='metric_value').reset_index()
 
     # Reorder models
+    models = df.model_name.unique().tolist()
+    model_order = ['all', 'none', 'fit', 'fit10', 'fit-spline'] + [m for m in models if m not in ['fit', 'fit10', 'fit-spline', 'all', 'none']]
     df = pd.concat(objs=[df.loc[df.model_name == m] for m in model_order if m in df.model_name.unique()], axis=0)
-    df['model_group'] = df.model_name.replace(model_group)
 
-    # Add 'section breaks'
-    df0 = df.loc[df.model_group == 'fit']
-    df1 = df.loc[df.model_group == 'nott']
-    label1 = pd.DataFrame([['Original models'] + [''] * (df.shape[1] - 1)], columns=df0.columns)
-    df2 = df.loc[df.model_group == 'nott-recal']
-    label2 = pd.DataFrame([['Recalibrated models'] + [''] * (df.shape[1] - 1)], columns=df0.columns)
-    df = pd.concat(objs=[df0, label1, df1, label2, df2], axis=0)
-    
     # Tidy model and column names
-    df.model_name = df.model_name.replace(model_labels)
-    df = df.rename(columns={'model_name': 'Model', 'ap': 'Average precision (%)', 'auroc': 'c-statistic (%)',
-                            'model_group': 'Model group'})
-
+    if model_labels is not None:
+        df.model_name = df.model_name.replace(model_labels)
+    df = df.rename(columns=metric_names)
     df.to_csv(save_path / DISC_PAPER, index=False)
     #endregion
 
@@ -153,145 +115,78 @@ def reformat_disc_cal(data_path: Path, save_path: Path, model_order: list = None
     df = df.pivot(index='model_name', columns='metric_name', values='metric_value').reset_index()
     df = df[['model_name', 'event_rate', 'mean_risk', 'oe_ratio', 'log_intercept', 'log_slope']]
     df = pd.concat(objs=[df.loc[df.model_name == m] for m in model_order if m in df.model_name.unique()], axis=0)
-    df['model_group'] = df.model_name.replace(model_group)
 
-    ## Add 'section breaks'
-    df0 = df.loc[df.model_group == 'fit']
-    df1 = df.loc[df.model_group == 'nott']
-    label1 = pd.DataFrame([['Original models'] + [''] * (df.shape[1] - 1)], columns=df0.columns)
-    df2 = df.loc[df.model_group == 'nott-recal']
-    label2 = pd.DataFrame([['Recalibrated models'] + [''] * (df.shape[1] - 1)], columns=df0.columns)
-    df = pd.concat(objs=[df0, label1, df1, label2, df2], axis=0)
-
-    ## Tidy model and column names
-    df.model_name = df.model_name.replace(model_labels)
-    df = df.rename(columns={'model_name': 'Model', 'event_rate': 'Event rate (%)', 'mean_risk': 'Mean risk (%)',
-                            'oe_ratio': 'O/E ratio', 'log_intercept': 'Log intercept', 'log_slope': 'Log slope',
-                            'model_group': 'Model group'}) 
-
+    # Tidy model and column names
+    if model_labels is not None:
+        df.model_name = df.model_name.replace(model_labels)
+    df = df.rename(columns=metric_names) 
     df.to_csv(save_path / CAL_PAPER, index=False)
     #endregion
 
     # ---- 3. Metrics at predefined risk thresholds ----
     #region
 
-    ## Read data and rescale to percentage
+    # Read data and rescale to percentage
     df = pd.read_csv(data_path / RISK_CI)
     check_nan(df)
     assert df.shape[0] == df.drop_duplicates().shape[0]
 
+    # Transform sens, spec, ppv, npv to percentage scale
     mask = df.metric_name.isin(['sens', 'spec', 'ppv', 'npv'])
     df.loc[mask, ['metric_value', 'ci_low', 'ci_high']] *= 100
 
-    mask = df.model_name != 'fit'
-    df.loc[mask, 'thr'] = (df.loc[mask, 'thr'] * 100).round(4) # If round to less than 3 digits, non-unique thr values
-    
-    ## Get tp, tn, fp, fn counts per 1000 tests additionally
-    npat = df.loc[df.metric_name.isin(['pp', 'pn'])].pivot(index=['thr', 'model_name'], columns=['metric_name'], values=['metric_value'])
-    npat = npat.sum(axis=1).iloc[0]  # Number of patients (Tests) 
-    for metric_name in ['pp', 'pn', 'tp', 'tn', 'fp', 'fn']:
-        dfsub = df.loc[df.metric_name == metric_name].copy()
-        dfsub[['metric_value', 'ci_low', 'ci_high']] *= (1000 / npat)
-        dfsub.metric_name = metric_name + '1000'
-        df = pd.concat(objs=[df, dfsub], axis=0)
+    # Threshold to percentage scale
+    df.thr *= 100
 
-    ## To wider format with CI
+    # To wider format with CI
     df = _reformat_ci(df, digits=2)
     df = df.pivot(index=['thr', 'model_name'], columns='metric_name', values='metric_value').reset_index()
     df = df[['thr', 'model_name', 'sens', 'spec', 'ppv', 'npv', 'pp', 'pn', 'tp', 'fn', 'fp', 'tn', 'pp_per_cancer',
              'pp1000', 'pn1000', 'tp1000', 'fn1000', 'fp1000', 'tn1000']]
 
-    ## Reorder rows
-    thr = df.thr.unique()
+    # Reorder rows
+    thr = df.thr.drop_duplicates().sort_values().unique()
     df = pd.concat(objs=[df.loc[(df.thr == t) & (df.model_name == m)] for t in thr for m in model_order if m in df.model_name.unique()], axis=0)
-    df['model_group'] = df.model_name.replace(model_group)
     
     # Tidy model name and column names
-    df.model_name = df.model_name.replace(model_labels)
-    df = df.rename(columns={'thr': 'Predicted risk (%)',
-                            'model_name': 'Model',
-                            'sens': 'Sensitivity (%)', 
-                            'spec': 'Specificity (%)', 
-                            'npv':'NPV (%)', 
-                            'ppv': 'PPV (%)',
-                            'pp': 'Positive tests', 
-                            'pp_per_cancer': 'Positive tests per cancer', 
-                            'pn': 'Negative tests',
-                            'tp': 'Detected cancers', 
-                            'fp': 'False positive tests', 
-                            'tn': 'True negative tests', 
-                            'fn': 'Missed cancers',
-                            'pp1000': 'Positive tests per 1000 tests', 
-                            'pn1000': 'Negative tests per 1000 tests',
-                            'tp1000': 'Detected cancers per 1000 tests', 
-                            'fp1000': 'False positive tests per 1000 tests', 
-                            'tn1000': 'True negative tests per 1000 tests', 
-                            'fn1000': 'Missed cancers per 1000 tests', 
-                            'model_group': 'Model group'})
-
+    if model_labels is not None:
+        df.model_name = df.model_name.replace(model_labels)
+    df = df.rename(columns=metric_names)
     df.to_csv(save_path / RISK_PAPER, index=False)
 
     #endregion
 
     # ---- 4. Metrics at sensitivity ----
-    # Could get more from pr_int data, but perhaps not necessary 
-    # Note: at lower sensiivities, like 50%, the metrics of FIT can be nan
-    #       this happens when e.g. at max threshold the sensitivity is greater than 50%.
+    # At lower sensiivities such as 50%, the metrics of FIT can be nan
+    # because the minimum possible FIT threshold may yield a sensitivity higher than that
     #region
 
-    ## Read data
+    # Read data
     df = pd.read_csv(data_path / SENS_CI)
     check_nan(df)
 
-    ## Rescale to %
-    mask = df.metric_name.isin(['spec', 'ppv', 'npv'])
+    # Rescale to %
+    mask = df.metric_name.isin(['sens', 'spec', 'ppv', 'npv'])
     df.loc[mask, ['metric_value', 'ci_low', 'ci_high']] *= 100   
     df.loc[(df.model_name != 'fit') & (df.metric_name == 'thr'), ['metric_value', 'ci_low', 'ci_high']] *= 100
     df.sens = (df.sens * 100).round(2)
 
-    ## Get tp, tn, fp, fn counts per 1000 tests additionally
-    npat = df.loc[df.metric_name.isin(['pp', 'pn'])].pivot(index=['sens', 'model_name'], columns=['metric_name'], values=['metric_value'])
-    npat = npat.sum(axis=1).iloc[0]  # Number of patients (Tests) 
-    for metric_name in ['pp', 'pn', 'tp', 'tn', 'fp', 'fn']:
-        dfsub = df.loc[df.metric_name == metric_name].copy()
-        dfsub[['metric_value', 'ci_low', 'ci_high']] *= (1000 / npat)
-        dfsub.metric_name = metric_name + '1000'
-        df = pd.concat(objs=[df, dfsub], axis=0)
-
-    ## To wider format with CI
+    # To wider format with CI
     df = _reformat_ci(df, digits=2)
     df = df.pivot(index=['sens', 'model_name'], columns='metric_name', values='metric_value').reset_index()
     df = df[['sens', 'model_name', 'spec', 'ppv', 'npv', 'pp', 'pn', 'tp', 'fn', 'fp', 'tn', 'pp_per_cancer',
              'pp1000', 'pn1000', 'tp1000', 'fn1000', 'fp1000', 'tn1000', 'thr']]
 
-    ## Reorder rows
-    thr = df.thr.unique()
-    df = pd.concat(objs=[df.loc[(df.thr == t) & (df.model_name == m)] for t in thr for m in model_order if m in df.model_name.unique()], axis=0)
-    df['model_group'] = df.model_name.replace(model_group)
+    # Reorder rows
+    thr = df.sens.drop_duplicates().sort_values().unique()
+    df = pd.concat(objs=[df.loc[(df.sens == t) & (df.model_name == m)] for t in thr for m in model_order if m in df.model_name.unique()], axis=0)
 
-    ## Tidy model name and column names
-    df.model_name = df.model_name.replace(model_labels)
-    df = df.rename(columns={'thr': 'Threshold approx (%)',
-                            'model_name': 'Model',
-                            'sens': 'Sensitivity (%)', 
-                            'spec': 'Specificity (%)', 
-                            'npv':'NPV (%)', 
-                            'ppv': 'PPV (%)',
-                            'pp': 'Positive tests', 
-                            'pp_per_cancer': 'Positive tests per cancer', 
-                            'pn': 'Negative tests',
-                            'tp': 'Detected cancers', 
-                            'fp': 'False positive tests', 
-                            'tn': 'True negative tests', 
-                            'fn': 'Missed cancers',
-                            'pp1000': 'Positive tests per 1000 tests', 
-                            'pn1000': 'Negative tests per 1000 tests',
-                            'tp1000': 'Detected cancers per 1000 tests', 
-                            'fp1000': 'False positive tests per 1000 tests', 
-                            'tn1000': 'True negative tests per 1000 tests', 
-                            'fn1000': 'Missed cancers per 1000 tests', 
-                            'model_group': 'Model group'})
-
+    # Tidy model name and column names
+    if model_labels is not None:
+        df.model_name = df.model_name.replace(model_labels)
+    df = df.rename(columns={'thr': 'Model threshold approx (%)'})
+    df = df.rename(columns=metric_names)
+    
     df.to_csv(save_path / SENS_PAPER, index=False)
     #endregion
 
@@ -301,171 +196,31 @@ def reformat_disc_cal(data_path: Path, save_path: Path, model_order: list = None
                                  [SENS_FIT_PAPER, SENS_FIT_PAPER2]):
         print(in_file, out_file)
         
-        ## Read data
+        # Read data
         df = pd.read_csv(data_path / in_file)
         check_nan(df)  ## It's OK for max_sens to be nan here, it is not relevant anyway, as not computed for FIT at thr 2/10 etc
 
-        ## Fix incorrectly assigned model_name if present
-        df.loc[df.model == 'fit', 'model_name'] = 'fit'
-        df = df.loc[(df.model == 'model') & (df.model_name != 'fit')]  # rm FIT from models here
+        # Reformat
+        df = _reformat_metrics_at_thr_fit_mod(df, model_labels, model_order)
 
-        ## Rescale to %
-        mask = df.metric_name.isin(['sens', 'spec', 'ppv', 'npv'])
-        df.loc[mask, ['metric_value', 'ci_low', 'ci_high']] *= 100   
-        df.loc[(df.model_name != 'fit') & (df.metric_name == 'thr'), ['metric_value', 'ci_low', 'ci_high']] *= 100
-
-        ## Get tp, tn, fp, fn counts per 1000 tests additionally
-        npat = df.loc[df.metric_name.isin(['pp', 'pn'])].pivot(index=['thr_fit', 'model', 'model_name'], columns=['metric_name'], values=['metric_value'])
-        npat = npat.sum(axis=1).iloc[0]  # Number of patients (Tests) 
-        for metric_name in ['pp', 'pn', 'tp', 'tn', 'fp', 'fn']:
-            dfsub = df.loc[df.metric_name == metric_name].copy()
-            dfsub[['metric_value', 'ci_low', 'ci_high']] *= (1000 / npat)
-            dfsub.metric_name = metric_name + '1000'
-            df = pd.concat(objs=[df, dfsub], axis=0)
-
-        ## Drop rows with nan
-        df.isna().sum()
-        df.loc[df.metric_value.isna(), 'metric_name'].unique()
-        df = df.loc[~df.metric_value.isna()]
-
-        ## Drop duplicates just in case
-        df0 = df.loc[df.model == 'fit'].drop_duplicates(subset=['thr_fit', 'model', 'metric_name'])
-        df1 = df.loc[df.model != 'fit']
-        df1 = df1.loc[df1.model_name != 'fit']  # Drop interpolated FIT test (as not the point of this table)
-        df = pd.concat(objs=[df0, df1], axis=0)
-
-        ## To wide format
-        df = _reformat_ci(df, digits=2)
-        df = df.pivot(index=['thr_fit', 'model', 'model_name'], columns='metric_name', values='metric_value').reset_index()
-        df = df[['thr_fit', 'model_name', 'sens', 'spec', 'ppv', 'npv', 'pp', 'pn', 'tp', 'fn', 'fp', 'tn', 'pp_per_cancer',
-                'pp1000', 'pn1000', 'tp1000', 'fn1000', 'fp1000', 'tn1000', 'thr']]
-
-        ## Reorder
-        thr = df.sens.unique()
-        df = pd.concat(objs=[df.loc[(df.sens == t) & (df.model_name == m)] for t in thr for m in model_order if m in df.model_name.unique()], axis=0)
-        df['Model group'] = df.model_name.replace(model_labels)
-
-        ## Tidy model name and column names
-        df.model_name = df.model_name.replace(model_labels)
-        df = df.rename(columns={'thr_fit': 'FIT threshold (ug/g)',
-                                'thr': 'Threshold approx (%)',
-                                'model_name': 'Model',
-                                'sens': 'Sensitivity (%)', 
-                                'spec': 'Specificity (%)', 
-                                'npv':'NPV (%)', 
-                                'ppv': 'PPV (%)',
-                                'pp': 'Positive tests', 
-                                'pp_per_cancer': 'Positive tests per cancer', 
-                                'pn': 'Negative tests',
-                                'tp': 'Detected cancers', 
-                                'fp': 'False positive tests', 
-                                'tn': 'True negative tests', 
-                                'fn': 'Missed cancers',
-                                'pp1000': 'Positive tests per 1000 tests', 
-                                'pn1000': 'Negative tests per 1000 tests',
-                                'tp1000': 'Detected cancers per 1000 tests', 
-                                'fp1000': 'False positive tests per 1000 tests', 
-                                'tn1000': 'True negative tests per 1000 tests', 
-                                'fn1000': 'Missed cancers per 1000 tests', 
-                                'model_group': 'Model group'})
+        # Save
         df.to_csv(save_path / out_file, index=False)
     #endregion
 
-    # ---- 6. Metrics at sensitivity corresponding to FIT thr: gain ----
-    # Note: unintentionally ran this with model = 'fit'
-    # This means a threshold was learned for fit that yields same sens which is slightly dif from actual fit thr
-    # Also note that model thr not given here, BUT can be taken from the previous table.
-    #region
-    for thr_file, in_file, out_file in zip([SENS_FIT_CI, SENS_FIT_2_CI], 
-                                           [SENS_FIT_GAIN_CI, SENS_FIT_GAIN_2_CI], 
-                                           [SENS_FIT_GAIN_PAPER, SENS_FIT_GAIN_PAPER2]):
-        print(thr_file, in_file, out_file)
-
-        ## Get model thresholds corresponding to each level of sensitivity
-        df0 = pd.read_csv(data_path / thr_file)
-        df0 = df0.loc[(df0.metric_name == 'thr') & (df0.model == 'model')]
-        df0 = df0.loc[df0.model_name != 'fit']  # rm FIT just in case if it is included
-
-        ## Read data
-        df = pd.read_csv(data_path / in_file)
-        df = pd.concat(objs=[df0, df], axis=0)
-        df = df.loc[(df.model == 'model') & (df.model_name != 'fit')]  # rm FIT just in case if it is included
-
-        ## Rescale to %
-        mask = df.metric_name.isin(['precision_gain', 'proportion_reduction_tests', 'delta_sens',
-                                    'ppv_mod', 'ppv_fit', 'sens_mod', 'sens_fit'])
-        df.loc[mask, ['metric_value', 'ci_low', 'ci_high']] *= 100   
-        df.loc[(df.model_name != 'fit') & (df.metric_name == 'thr'), ['metric_value', 'ci_low', 'ci_high']] *= 100
-
-        ## Get pp per 1000 tests additionally (npat computeds before)
-        for metric_name, new_name in zip(['pp_mod', 'pp_fit'], ['pp_mod_1000', 'pp_fit_1000']):
-            dfsub = df.loc[df.metric_name == metric_name].copy()
-            dfsub[['metric_value', 'ci_low', 'ci_high']] *= (1/npat * 1000)
-            dfsub.metric_name = new_name
-            df = pd.concat(objs=[df, dfsub], axis=0)
-
-        ## To wide format
-        df = _reformat_ci(df, digits=2)
-        df = df.drop_duplicates()
-        df = df.pivot(index=['thr_fit', 'model', 'model_name'], columns='metric_name', values='metric_value').reset_index()
-        df = df[['thr_fit', 'model_name', 'proportion_reduction_tests', 'delta_sens', 'pp_mod', 'pp_fit', 
-                 'sens_mod', 'sens_fit', 'pp_mod_1000', 'pp_fit_1000', 'precision_gain', 'ppv_mod', 'ppv_fit',
-                 'thr']]
-
-        ## Reorder
-        thr = df.thr_fit.unique()
-        df = pd.concat(objs=[df.loc[(df.thr_fit == t) & (df.model_name == m)] for t in thr for m in model_order if m in df.model_name.unique()], axis=0)
-
-        ## Tidy model name and column names
-        df.model_name = df.model_name.replace(model_labels)
-        df = df.rename(columns={'thr_fit': 'FIT threshold (ug/g)', 
-                                'thr': 'Model threshold (%)', 
-                                'model_name': 'Model', 
-                                'precision_gain': 'Gain in PPV (% scale)', 
-                                'proportion_reduction_tests': 'Percent reduction in number of positive tests',
-                                'delta_sens': 'Delta sensitivity (model minus FIT)',
-                                'ppv_mod': 'PPV model (%)', 
-                                'ppv_fit': 'PPV FIT (%)',
-                                'pp_mod': 'Positive tests (model)', 
-                                'pp_fit': 'Positive tests (FIT)',
-                                'pp_mod_1000': 'Positive tests per 1000 tests (model)', 
-                                'pp_fit_1000': 'Positive tests per 1000 tests (FIT)',
-                                'sens_mod': 'Sensitivity model (%)', 
-                                'sens_fit': 'Sensitivity FIT (%)'})
-        df.to_csv(save_path / out_file, index=False)
-    #endregion
-
-    # ---- 7. Net benefit ----
+    # ---- 6. Net benefit ----
     #region
 
-    ## Read data and rescale to percentage
+    # Read data and rescale to percentage
     df = pd.read_csv(data_path / DC_CI)
     check_nan(df)
     assert df.shape[0] == df.drop_duplicates().shape[0]
 
-    ## Rescale
-    mask = df.metric_name.isin(['prevalence', 'test_pos_rate', 'tp_rate', 'fp_rate', 'fn_rate'])
+    # Rescale to %
+    mask = df.metric_name.isin(['prevalence', 'test_pos_rate', 'test_neg_rate', 'tp_rate', 'fp_rate', 'tn_rate', 'fn_rate'])
     df.loc[mask, ['metric_value', 'ci_low', 'ci_high']] *= 100
     df = df.rename(columns={'threshold': 'thr'})
     df.thr *= 100
     df.thr = df.thr.round(5)  # If round to less than 3 digits, non-unique thr values
-
-    ## Get tp, tn, fp, fn counts
-    npat = df.loc[df.metric_name == 'n', 'metric_value'].iloc[0]
-    for metric_name, new_name in zip(['test_pos_rate', 'tp_rate', 'fp_rate', 'fn_rate'],
-                                     ['pp', 'tp', 'fp', 'fn']):
-        dfsub = df.loc[df.metric_name == metric_name].copy()
-        dfsub[['metric_value', 'ci_low', 'ci_high']] *= (1/100 * npat)
-        dfsub.metric_name = new_name
-        df = pd.concat(objs=[df, dfsub], axis=0)
-
-    ## Get tp, tn, fp, fn counts per 1000 tests additionally
-    npat = df.loc[df.metric_name == 'n', 'metric_value'].iloc[0]
-    for metric_name in ['pp', 'tp', 'fp', 'fn']:
-        dfsub = df.loc[df.metric_name == metric_name].copy()
-        dfsub[['metric_value', 'ci_low', 'ci_high']] *= (1/npat * 1000)
-        dfsub.metric_name = metric_name + '1000'
-        df = pd.concat(objs=[df, dfsub], axis=0)
 
     ## To wider format with CI
     df.shape
@@ -476,15 +231,15 @@ def reformat_disc_cal(data_path: Path, save_path: Path, model_order: list = None
     df = df.pivot(index=['thr', 'model_name'], columns='metric_name', values='metric_value').reset_index()
     df = df[['thr', 'model_name', 'n', 'prevalence', 'pp', 'tp', 'fn', 'fp',
              'net_benefit', 'net_intervention_avoided',
-             'pp1000', 'tp1000', 'fp1000', 'fn1000']]
+             'pp1000', 'pn1000', 'tp1000', 'fp1000', 'tn1000', 'fn1000']]
 
     ## Reorder rows
     thr = df.thr.unique()
     df = pd.concat(objs=[df.loc[(df.thr == t) & (df.model_name == m)] for t in thr for m in model_order if m in df.model_name.unique()], axis=0)
-    df['model_group'] = df.model_name.replace(model_group)
 
     # Tidy model name and column names
-    df.model_name = df.model_name.replace(model_labels)
+    if model_labels is not None:
+        df.model_name = df.model_name.replace(model_labels)
     df.model_name = df.model_name.replace({'all': 'Test all', 'none': 'Test none', 'fit10': 'FIT ≥ 10'})
     df = df.rename(columns={'thr': 'Predicted risk (%)',
                             'model_name': 'Model',
@@ -522,8 +277,8 @@ def reformat_disc_cal(data_path: Path, save_path: Path, model_order: list = None
     df.to_csv(save_path / DC_PAPER, index=False)
     #endregion
 
-    # ---- 8. Test reduction at sens ----
-    #regions
+    # ---- 7. Test reduction at sens ----
+    #region
 
     ## Read data
     df = pd.read_csv(data_path / PR_GAIN_CI)
@@ -542,14 +297,13 @@ def reformat_disc_cal(data_path: Path, save_path: Path, model_order: list = None
     df = _reformat_ci(df, digits=2)
     df = df.pivot(index=['sens', 'model_name'], columns='metric_name', values='metric_value').reset_index()
     df = df.rename(columns={'precision': 'ppv_mod', 'recall': 'sens', 'precision_fit': 'ppv_fit'})
-    df = df[['sens', 'model_name', 'proportion_reduction_tests', 'ppv_mod', 'ppv_fit', 'precision_gain']]
+    df = df[['sens', 'model_name', 'proportion_reduction_tests', 'ppv_mod', 'ppv_fit', 'delta_ppv']]
 
     df = df.loc[df.sens.isin(df0.sens)]
 
     ## Reorder rows
     thr = df.sens.unique()
     df = pd.concat(objs=[df.loc[(df.sens == t) & (df.model_name == m)] for t in thr for m in model_order if m in df.model_name.unique()], axis=0)
-    df['model_group'] = df.model_name.replace(model_group)
 
     ## Tidy model name and column names
     df.model_name = df.model_name.replace(model_labels)
@@ -557,7 +311,7 @@ def reformat_disc_cal(data_path: Path, save_path: Path, model_order: list = None
                             'model_name': 'Model',
                             'ppv_mod': 'PPV model (%)',
                             'ppv_fit': 'PPV FIT (%)',
-                            'precision_gain': 'Gain in PPV (% scale)',
+                            'delta_ppv': 'Delta PPV (% scale)',
                             'proportion_reduction_tests': 'Percent reduction in number of positive tests',
                             'sens': 'Sensitivity (%)', 
                             'spec': 'Specificity (%)', 
@@ -583,47 +337,40 @@ def reformat_disc_cal(data_path: Path, save_path: Path, model_order: list = None
     #endregion
 
     print('Reformat complete.')
+
+
+def _reformat_metrics_at_thr_fit_mod(df, model_labels, model_order):
+        
+    # Rescale to %
+    mask = df.metric_name.isin(['sens_fit', 'spec_fit', 'ppv_fit', 'npv_fit',
+                                'sens_mod', 'spec_mod', 'ppv_mod', 'npv_mod'])
+    df.loc[mask, ['metric_value', 'ci_low', 'ci_high']] *= 100   
+    df.loc[(df.model_name != 'fit') & (df.metric_name.isin(['thr_mod'])), ['metric_value', 'ci_low', 'ci_high']] *= 100
+    if 'thr_mod' in df.columns:
+        df.thr_mod = df.thr_mod * 100
+
+    # To wide format
+    df = _reformat_ci(df, digits=2)
+    if 'thr_mod' in df.columns:
+        df = df.pivot(index=['thr_fit', 'thr_mod', 'model_name'], columns='metric_name', values='metric_value').reset_index()
+    else:
+        df = df.pivot(index=['thr_fit', 'model_name'], columns='metric_name', values='metric_value').reset_index()
+    cols = ['thr_fit', 'thr_mod', 'model_name', 'pp_mod', 'pp_fit', 'proportion_reduction_tests',
+            'sens_mod', 'sens_fit', 'delta_sens', 'tp_mod', 'tp_fit', 'delta_tp',
+            'ppv_mod', 'ppv_fit', 'delta_ppv', 'pp_per_cancer_mod', 'pp_per_cancer_fit',
+            'pp1000_mod', 'pp1000_fit', 'tp1000_mod', 'tp1000_fit'
+            ]
+    cols_use = [c for c in cols if c in df.columns]
+    df = df[cols_use]
+
+    # Reorder
+    if model_order is not None:
+        thr = df.thr_fit.unique()
+        df = pd.concat(objs=[df.loc[(df.thr_fit == t) & (df.model_name == m)] for t in thr for m in model_order if m in df.model_name.unique()], axis=0)
+
+    # Tidy model name and column names
+    df = df.rename(columns=metric_names)
+    if model_labels is not None:
+        df.model_name = df.model_name.replace(model_labels)
     
-
-def reformat_strata(run_path):
-    raise NotImplementedError
-    
-    df = pd.read_csv(run_path / DISC_STRATA)
-    df[['metric_value', 'ci_low', 'ci_high']] *= 100
-    df = _reformat_strata(df, digits=1)
-    df.to_csv(run_path / DISC_STRATA_PAPER, index=False)
-
-    df = pd.read_csv(run_path / CAL_STRATA)
-    df = _reformat_strata(df)
-    df = df[['strata_variable', 'strata_value', 'strata_n', 'strata_n_crc', 'model_name',
-             'event_rate', 'mean_risk', 'oe_ratio', 'log_intercept', 'log_slope', 'model_group']]
-    df.to_csv(run_path / CAL_STRATA_PAPER, index=False)
-
-
-def _reformat_strata(df, digits=3):
-    raise NotImplementedError
-
-    model_order = ['fit', 'fit10', 'fit-spline', 'fit-lowess', 'fit-age', 'fit-age-sex',
-
-                    'nottingham-fit', 'nottingham-fit-platt', 'nottingham-fit-quant', 'nottingham-fit-3.5',
-                    'nottingham-fit-age', 'nottingham-fit-age-platt', 'nottingham-fit-age-quant', 'nottingham-fit-age-3.5',
-                    'nottingham-fit-age-sex', 'nottingham-fit-age-sex-platt', 'nottingham-fit-age-sex-quant', 'nottingham-fit-age-sex-3.5',
-
-                    'nottingham-lr', 'nottingham-lr-boot', 'nottingham-cox', 'nottingham-cox-boot',
-                    'nottingham-lr-quant', 'nottingham-lr-3.5', 'nottingham-lr-platt', 'nottingham-lr-iso']
-
-    df = _reformat_ci(df, digits=digits)
-    df = df.pivot(index=['strata_variable', 'strata_value', 'strata_n', 'strata_n_crc', 'model_name'],
-                  columns='metric_name', values='metric_value').reset_index()
-    df['model_group'] = df.model_name.replace(model_group)
-
-    tmp = pd.DataFrame()
-    for var in df.strata_variable.unique():
-        dfsub = df.loc[df.strata_variable == var]
-        val = dfsub.strata_value.sort_values().unique()
-        for v in val:
-            dfsub2 = dfsub.loc[dfsub.strata_value == v]
-            dfsub2 = pd.concat(objs=[dfsub2.loc[dfsub2.model_name == m] for m in model_order if m in dfsub2.model_name.unique()], axis=0)
-            tmp = pd.concat(objs=[tmp, dfsub2], axis=0)
-    return tmp
-    
+    return df

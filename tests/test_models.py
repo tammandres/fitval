@@ -15,8 +15,7 @@ def test_apply_model():
     # Test that prediction functions can be applied, and result is in [0, 1]
 
     rng = np.random.default_rng(seed=42)
-    columns = ['age_at_fit', 'fit_val', 'blood_PLT', 'blood_MCV', 'ind_gender_M', 'blood_HGB', 'blood_CFER', 
-              'blood_FEN']  #, 'blood_TRSAT']
+    columns = ['age', 'fit_val', 'blood_PLT', 'blood_MCV', 'ind_gender_M']
     df = rng.normal(loc=100, scale=10, size=(10, len(columns)))
     df = pd.DataFrame(df, columns=columns)
     for m in MODEL_NAMES:
