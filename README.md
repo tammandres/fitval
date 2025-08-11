@@ -71,15 +71,10 @@ It is more efficient to run the code on a dataframe that already contains model 
 
 ## Overview of files 
 
+`./data` : a simple synthetic dataset to illustrate how this repository can be used;
 
-**At a glance**: 
+`./examples` : scripts that illustrate how the code can be run on new data (in these scripts, the code is run on synthetic data to illustrate how it works);
 
-`./dataprep_fit` : contains code for the initial steps of processing the FIT data (extracting clinical symptoms and identifying tests done in the stool pot), and code for identifying pathology reports that discuss current colorectal cancer. Once these steps were complete, the functions in the `./dataprep_fitval` directory were used to prepare a dataset for analysis. This code will be uploaded within a week.
+`./fitval` : helper functions needed for evaluating a prediction model, such as functions that compute performance metrics;
 
-`./dataprep_fitval` : contains functions that were used to prepare the hospital data for analysis (e.g. to clean the blood test values and extract the blood test value closest to the first FIT test), and to summarise changes in the patient population over time (e.g. to plot the proportion of patients with a positive FIT test over time). NB - these scripts were originally used as a separate code repository. The `./dataprep_fitval` directory thus includes its own requirements.txt file and installation instructions in README.md.
-
-`./fitval` : contains helper functions needed for the analysis, such as functions that compute performance metrics;
-
-`./runs` : contains scripts that were run to conduct the analysis and produce the tables and figures in the publication (these scripts make use of the helper functions in the `./fitval` directory);
-
-`./tests` : contains scripts that were used to check that the functions are performing as expected;
+`./tests` : scripts that were used to check that the functions are performing as expected;

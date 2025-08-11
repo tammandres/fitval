@@ -6,7 +6,7 @@ tmp_*/
 
 # Analysis outputs and data
 /out/
-/data/
+#/data/
 /results/
 /airlock
 #/tests/test*/
